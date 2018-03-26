@@ -1,4 +1,4 @@
-package me.carleslc.zenkai
+package ai.zenkai.zenkai
 
 import org.junit.Test
 import org.junit.runner.RunWith

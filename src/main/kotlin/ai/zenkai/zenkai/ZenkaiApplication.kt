@@ -1,4 +1,4 @@
-package me.carleslc.zenkai
+package ai.zenkai.zenkai
 
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.runApplication
