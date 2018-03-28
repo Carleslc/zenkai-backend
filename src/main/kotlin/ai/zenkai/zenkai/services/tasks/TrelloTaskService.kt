@@ -11,7 +11,7 @@ class TrelloTaskService : TaskService {
 
     /** Sorted tasks (closer deadline first, in other case prevails Trello board list order) **/
     override fun getTasks(token: String, status: TaskStatus): List<Task> {
-        return listOf(Task("Tarea de ejemplo", "Esta es una descripción", TaskStatus.TODO, 5 days fromNow, listOf("EXAMPLE")))
+        return listOf(Task("Tarea de ejemplo", "¡Vamos \uD83E\uDD42!", TaskStatus.TODO, 5 days fromNow, listOf("EXAMPLE")))
     }
 
 }

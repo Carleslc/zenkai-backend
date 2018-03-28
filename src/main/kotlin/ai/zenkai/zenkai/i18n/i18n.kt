@@ -22,6 +22,8 @@ object i18n {
 
     operator fun contains(language: String) = supportedLocales.containsKey(language)
 
+    operator fun get(locale: String) = supportedLocales[locale]
+
     operator fun get(id: S, locale: String): String {
         val bundle = languageBundles[locale] ?: DEFAULT_BUNDLE
         return bundle.getString(id.toString())
@@ -53,3 +55,5 @@ enum class S {
 }
 
 fun StringBuilder.append(id: S, locale: String) = append(i18n[id, locale])
+
+fun String.toLocale() = i18n[this]

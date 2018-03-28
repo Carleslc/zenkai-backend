@@ -1,5 +1,6 @@
 package ai.zenkai.zenkai.exceptions
 
+import ai.zenkai.zenkai.model.TokenType
 import com.google.gson.Gson
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -9,15 +10,11 @@ import kotlin.reflect.full.isSubclassOf
 
 fun <T> ok(body: T) = ResponseEntity(body, HttpStatus.OK)
 
-fun badRequest(message: String?) = ErrorJson(message, HttpStatus.BAD_REQUEST).getResponseEntity()
-
-fun badRequest(e: Exception) = badRequest(e.message)
-
 fun badRequest(e: Exception, gson: Gson, res: HttpServletResponse) {
-    jsonError(ErrorJson(e.message, HttpStatus.BAD_REQUEST), gson, res)
+    jsonError(BotError(e.message, HttpStatus.BAD_REQUEST), gson, res)
 }
 
-fun jsonError(error: ErrorJson, gson: Gson, res: HttpServletResponse) {
+fun jsonError(error: BotError, gson: Gson, res: HttpServletResponse) {
     res.setHeader("Content-Type", "application/json;charset=UTF-8")
     res.setStatus(error.status)
     res.writer.print(gson.toJson(error))
@@ -29,9 +26,18 @@ fun <R> Throwable.multicatch(vararg classes: KClass<*>, block: () -> R): R {
      } else throw this
 }
 
-data class ErrorJson(val message: String?, @Transient private val httpStatus: HttpStatus) {
+open class BotError(val message: String?, @Transient private val httpStatus: HttpStatus) {
+
+    constructor(e: Exception, httpStatus: HttpStatus) : this(e.message, httpStatus)
+
     val status = httpStatus.value()
     val error = httpStatus.reasonPhrase
 
     fun getResponseEntity() = ResponseEntity(this, httpStatus)
+}
+
+class LoginError(val login: TokenType): BotError("Login required", HttpStatus.UNAUTHORIZED)
+
+class BadRequestError(message: String?): BotError(message, HttpStatus.BAD_REQUEST) {
+    constructor(e: Exception): this(e.message)
 }

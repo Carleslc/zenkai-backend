@@ -1,25 +1,25 @@
 package ai.zenkai.zenkai.controllers
 
-import ai.zenkai.zenkai.S
-import ai.zenkai.zenkai.exceptions.*
-import ai.zenkai.zenkai.i18n
+import ai.zenkai.zenkai.CachedHttpServletRequest
+import ai.zenkai.zenkai.exceptions.badRequest
+import ai.zenkai.zenkai.exceptions.multicatch
+import ai.zenkai.zenkai.fixInt
+import ai.zenkai.zenkai.i18n.S
+import ai.zenkai.zenkai.i18n.i18n
+import ai.zenkai.zenkai.i18n.isSpanish
+import ai.zenkai.zenkai.model.Bot
+import ai.zenkai.zenkai.model.Handler
 import ai.zenkai.zenkai.model.Task
 import ai.zenkai.zenkai.model.TaskStatus
 import ai.zenkai.zenkai.model.TaskStatus.*
+import ai.zenkai.zenkai.model.TokenType.TRELLO
 import ai.zenkai.zenkai.services.calendar.CalendarService
 import ai.zenkai.zenkai.services.clock.ClockService
 import ai.zenkai.zenkai.services.tasks.TaskService
 import ai.zenkai.zenkai.services.weather.WeatherService
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
-import com.tmsdurham.actions.DialogflowApp
-import com.tmsdurham.actions.RichResponse
-import com.tmsdurham.dialogflow.Data
-import com.tmsdurham.dialogflow.DialogflowResponse
-import main.java.com.tmsdurham.dialogflow.sample.DialogflowAction
 import me.carleslc.kotlin.extensions.html.h
-import me.carleslc.kotlin.extensions.number.round
-import me.carleslc.kotlin.extensions.standard.isNull
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.web.bind.annotation.GetMapping
@@ -31,7 +31,7 @@ import javax.servlet.http.HttpServletResponse
 
 @RestController
 class RootController(private val clockService: ClockService,
-                     private var calendarService: CalendarService,
+                     private val calendarService: CalendarService,
                      private val weatherService: WeatherService,
                      private val tasksService: TaskService) {
 
@@ -46,56 +46,49 @@ class RootController(private val clockService: ClockService,
     @PostMapping("/")
     fun intentMapper(req: HttpServletRequest, res: HttpServletResponse) {
         try {
-            DialogflowAction(req, res, gson).handleRequest(actionMap)
+            Bot.handleRequest(CachedHttpServletRequest(req), res, gson, actionMap, calendarService)
         } catch (e: Exception) {
-            e.multicatch(InvalidArgumentException::class,
-                    MissingRequiredArgumentException::class,
-                    InvalidTokenException::class,
-                    IllegalStateException::class,
-                    JsonSyntaxException::class) {
-                logger.warn("${e.message}, for request ${req.body}")
+            e.multicatch(IllegalStateException::class, JsonSyntaxException::class) {
                 badRequest(e, gson, res)
             }
         }
     }
 
-    fun fixInt(n: Double): String = if (n.toInt().toDouble() == n) n.toInt().toString() else n.round(5)
-
-    fun sum(action: DialogflowApp) {
-        val a = action.getParameter("number1").toDouble()
-        val b = action.getParameter("number2").toDouble()
+    fun Bot.sum() {
+        val a = getDouble("number1")
+        val b = getDouble("number2")
         val result = a + b
-        action.tell("The sum of ${fixInt(a)} and ${fixInt(b)} is ${fixInt(result)}")
+        tell("The sum of ${fixInt(a)} and ${fixInt(b)} is ${fixInt(result)}")
     }
 
-    fun substract(action: DialogflowApp) {
-        val a = action.getParameter("number1").toDouble()
-        val b = action.getParameter("number2").toDouble()
+    fun Bot.substract() {
+        val a = getDouble("number1")
+        val b = getDouble("number2")
         val result = a - b
-        action.tell("The difference between ${fixInt(a)} and ${fixInt(b)} is ${fixInt(result)}")
+        tell("The difference between ${fixInt(a)} and ${fixInt(b)} is ${fixInt(result)}")
     }
 
-    fun multiply(action: DialogflowApp) {
-        val a = action.getParameter("number1").toDouble()
-        val b = action.getParameter("number2").toDouble()
+    fun Bot.multiply() {
+        val a = getDouble("number1")
+        val b = getDouble("number2")
         val result = a * b
-        action.tell("${fixInt(a)} times ${fixInt(b)} is ${fixInt(result)}")
+        tell("${fixInt(a)} times ${fixInt(b)} is ${fixInt(result)}")
     }
 
-    fun divide(action: DialogflowApp) {
-        val a = action.getParameter("number1").toDouble()
-        val b = action.getParameter("number2").toDouble()
+    fun Bot.divide() {
+        val a = getDouble("number1")
+        val b = getDouble("number2")
         if (b == 0.toDouble()) {
-            action.tell("Cannot divide by 0!")
+            tell("Cannot divide by 0!")
         } else {
             val result = a / b
-            action.tell("${fixInt(a)} divided by ${fixInt(b)} is ${fixInt(result)}")
+            tell("${fixInt(a)} divided by ${fixInt(b)} is ${fixInt(result)}")
         }
     }
 
-    fun weather(action: DialogflowApp) = verify(action) {
-        val location = action.getParameter("city")
-        action.fill(weatherService.getWeather(location, language), get(S.CITY_NOT_FOUND)) {
+    fun Bot.weather() {
+        val location = getString("city")
+        fill(weatherService.getWeather(location!!, language), get(S.CITY_NOT_FOUND)) {
             get(S.WEATHER)
                     .replace("\$city", city)
                     .replace("\$temperature", temperature.toString())
@@ -103,80 +96,92 @@ class RootController(private val clockService: ClockService,
         }
     }
 
-    fun clock(action: DialogflowApp) = verify(action) {
-        val time = clockService.getCurrentTime(timezone).time
-        val speech = "${get(S.CURRENT_TIME)} $time".trim()
-        action.tell(speech)
+    fun Bot.clock() {
+        val time = clockService.now(timezone)
+        val prefix = get(if (time.hour == 1 || time.hour == 13) S.CURRENT_TIME_SINGLE else S.CURRENT_TIME)
+        val formattedTime = clockService.format(time, language)
+        val speech = "${prefix.capitalize()} $formattedTime".trim()
+        tell(speech, formattedTime)
     }
 
-    fun readTasks(action: DialogflowApp) = verify(action) {
-        if (trelloToken == null) throw InvalidTokenException()
-        val readTasksContext = "tasksread-followup"
-        val taskType = action.getContextArgument(readTasksContext, "task-type")?.value
-        val status = if (taskType != null) {
-            logger.debug("TaskStatus: $taskType")
-            TaskStatus.valueOf(taskType.toString())
-        } else TaskStatus.default()
-        val tasks = tasksService.getTasks(trelloToken, status)
-        with (tasks) {
-            val response = RichResponse()
-            var initialMessageId: S? = null
-            when (status) {
-                DONE -> initialMessageId = when {
-                    isEmpty() -> S.EMPTY_DONE
-                    size == 1 -> S.COMPLETED_FIRST_TASK
-                    size < 5 -> S.COMPLETED_TASKS
-                    size < 20 -> S.COMPLETED_TASKS_CONGRATULATIONS
-                    else -> S.COMPLETED_TASKS_KEEP_IT_UP
-                }
-                DOING -> {
-                    initialMessageId = when {
-                        isEmpty() -> S.EMPTY_DOING
-                        size == 1 -> S.DOING_TASK
-                        else -> S.MULTITASKING
+    fun Bot.calendar() {
+        var original = getString("date-original")
+        var date = getDate("date")
+
+        if (language.isSpanish() && "semana pasada" in query) { // fix Dialogflow misunderstanding
+            date = date.minusWeeks(1)
+        }
+
+        val be = isOrWas(date)
+
+        var raw = ""
+        val format = if (original == null || original.isBlank()) {
+            original = get(S.TODAY)
+            calendarService.prettyDate(date, language)
+        } else if (original.contains("[0-9]".toRegex())) {
+            raw = " (${calendarService.formatDate(date, language)})"
+            calendarService.getDayOfWeek(date, language)
+        } else {
+            calendarService.getDayOfMonth(date, language)
+        }
+
+        val speech = "${original.capitalize()} $be $format"
+        val display = "$speech$raw"
+        tell(speech, display)
+    }
+
+    fun Bot.readTasks() {
+        requireToken(TRELLO) { trelloToken ->
+            val taskType = getString("task-type")
+            logger.info("Task Type $taskType")
+            val status = if (taskType != null) {
+                TaskStatus.valueOf(taskType.toString())
+            } else TaskStatus.default()
+            val tasks = tasksService.getTasks(trelloToken, status)
+            with (tasks) {
+                var initialMessageId: S? = null
+                when (status) {
+                    DONE -> initialMessageId = when {
+                        isEmpty() -> S.EMPTY_DONE
+                        size == 1 -> S.COMPLETED_FIRST_TASK
+                        size < 5 -> S.COMPLETED_TASKS
+                        size < 20 -> S.COMPLETED_TASKS_CONGRATULATIONS
+                        else -> S.COMPLETED_TASKS_KEEP_IT_UP
                     }
-                }
-                TODO -> {
-                    initialMessageId = when {
-                        isEmpty() -> S.EMPTY_TODO
-                        size == 1 -> S.TODO_SINGLE
-                        count { it.status == DOING } > 1 -> S.MULTITASKING
-                        else -> S.TODO
+                    DOING -> {
+                        initialMessageId = when {
+                            isEmpty() -> S.EMPTY_DOING
+                            size == 1 -> S.DOING_TASK
+                            else -> S.MULTITASKING
+                        }
                     }
+                    TODO -> {
+                        initialMessageId = when {
+                            isEmpty() -> S.EMPTY_TODO
+                            size == 1 -> S.TODO_SINGLE
+                            count { it.status == DOING } > 1 -> S.MULTITASKING
+                            else -> S.TODO
+                        }
+                    }
+                    else -> { /* SOMEDAY, fallback to default answer */ }
                 }
-                else -> { /* SOMEDAY, fallback to default answer */ }
-            }
-            if (initialMessageId != null) {
-                val initialMessage = get(initialMessageId).replace("\$size", size.toString())
-                response.addSimpleResponse(initialMessage, initialMessage)
-                if (isNotEmpty()) {
-                    val taskHeader = get(if (size == 1) S.YOUR_TASK else S.YOUR_TASKS)
-                    response.addSimpleResponse(taskHeader, taskHeader)
-                    forEach { response.addSimpleResponse(it.getSpeech(language, timezone), it.getDisplayText(language, timezone)) }
+                if (initialMessageId != null) {
+                    val initialMessage = get(initialMessageId).replace("\$size", size.toString())
+                    addMessage(initialMessage)
+                    if (isNotEmpty()) {
+                        addMessage(get(if (size == 1) S.YOUR_TASK else S.YOUR_TASKS))
+                        forEach { addMessage(it.getSpeech(language, timezone), it.getDisplayText(language, timezone)) }
+                    }
+                    send()
                 }
-                action.data {
-                    //  TODO custom data
-                    put("zenkai", listOf("Example data 1", "And 2"))
-                }
-                //action.tell("Hello")
-                action.tell(response)
             }
         }
-    }
-
-    fun DialogflowApp.getParameter(vararg keys: String): String {
-        val param = getArgument(keys[0])
-        return if (keys.size > 1) (param as Map<*,*>)[keys[1]].toString() else param.toString()
-    }
-
-    fun <T> DialogflowApp.fill(obj: T?, default: String, fill: T.() -> String) {
-        tell(if (obj.isNull()) default else fill(obj!!))
     }
 
     fun Task.getDisplayText(language: String, zoneId: ZoneId) = buildString {
         appendln(title)
         if (deadline != null) {
-            append(i18n[S.DEADLINE, language]).append(' ').appendln(calendarService.pretty(deadline, zoneId, language))
+            append(i18n[S.DEADLINE, language]).append(' ').appendln(calendarService.prettyApproxDateTime(deadline, zoneId, language))
         }
         appendln(description)
         if (tags.isNotEmpty()) {
@@ -187,28 +192,19 @@ class RootController(private val clockService: ClockService,
     fun Task.getSpeech(language: String, zoneId: ZoneId) = buildString {
         append(title)
         if (deadline != null) {
-            append(' ').append(i18n[S.DEADLINE_SPEECH, language]).append(' ').append(calendarService.prettyDuration(deadline, zoneId))
+            append(' ').append(i18n[S.DEADLINE_SPEECH, language]).append(' ').append(calendarService.prettyApprox(deadline, zoneId, language))
         }
     }
 
-    @Throws(InvalidArgumentException::class, MissingRequiredArgumentException::class)
-    fun verify(action: DialogflowApp, success: RequestParameters.() -> Unit) {
-        success(RequestParameters.from(action))
-        // TODO: Add custom error message with action.data
-    }
-
-    fun DialogflowApp.getRequest() = gson.toJson(request.body)
-
-    val HttpServletRequest.body get() = inputStream.reader().readText()
-
-    val actionMap = mapOf(
-            "calculator.sum" to ::sum,
-            "calculator.substraction" to ::substract,
-            "calculator.multiplication" to ::multiply,
-            "calculator.division" to ::divide,
-            "weather" to ::weather,
-            "time.get" to ::clock,
-            "tasks.read" to ::readTasks
+    val actionMap: Map<String, Handler> = mapOf(
+            "calculator.sum" to { b -> b.sum() },
+            "calculator.substraction" to { b -> b.substract() },
+            "calculator.multiplication" to { b -> b.multiply() },
+            "calculator.division" to { b -> b.divide() },
+            "weather" to { b -> b.weather() },
+            "time.get" to { b -> b.clock() },
+            "date.get" to { b -> b.calendar() },
+            "tasks.read" to { b -> b.readTasks() }
     )
 
 }
