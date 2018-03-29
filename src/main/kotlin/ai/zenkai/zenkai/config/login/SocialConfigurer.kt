@@ -1,11 +1,8 @@
 package ai.zenkai.zenkai.config.login
 
-import ai.zenkai.zenkai.model.User
-import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.core.env.Environment
-import org.springframework.security.core.context.SecurityContext
 import org.springframework.social.UserIdSource
 import org.springframework.social.config.annotation.ConnectionFactoryConfigurer
 import org.springframework.social.config.annotation.EnableSocial
@@ -20,9 +17,6 @@ import org.springframework.social.connect.web.ProviderSignInUtils
 @EnableSocial
 class SocialConfig : SocialConfigurerAdapter() {
 
-    @Autowired
-    private lateinit var user: User
-
     override fun addConnectionFactories(connectionFactoryConfigurer: ConnectionFactoryConfigurer, environment: Environment) {
         connectionFactoryConfigurer.addConnectionFactory(TrelloConnectionFactory(
                 environment.getProperty("spring.social.trello.app-id")!!,
@@ -30,7 +24,7 @@ class SocialConfig : SocialConfigurerAdapter() {
     }
 
     override fun getUserIdSource(): UserIdSource {
-        return user
+        return UserIdSource { "" }
     }
 
     override fun getUsersConnectionRepository(connectionFactoryLocator: ConnectionFactoryLocator): UsersConnectionRepository {
