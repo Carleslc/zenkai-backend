@@ -23,7 +23,7 @@ class WebSecurity() : WebSecurityConfigurerAdapter() {
                 .antMatchers(HttpMethod.GET, "/**").permitAll()
                 .anyRequest().authenticated()
                 .and()
-                .addFilter(JwtAuthorizationFilter(authenticationManager()))
+                .addFilter(AuthorizationFilter(authenticationManager()))
     }
 
 }

@@ -1,11 +1,13 @@
-package ai.zenkai.zenkai
+package ai.zenkai.zenkai.i18n
 
 import java.util.*
+
+const val DEFAULT_LANGUAGE = "en"
 
 object i18n {
 
     private const val NAME = "strings/strings"
-    private val DEFAULT_BUNDLE by lazy { languageBundles.values.first() }
+    private val DEFAULT_BUNDLE by lazy { languageBundles[DEFAULT_LANGUAGE]!! }
 
     private val supportedLocales by lazy {
         arrayOf("en", "es").map {
@@ -16,7 +18,7 @@ object i18n {
 
     private val languageBundles by lazy {
         supportedLocales.map {
-            it.key to ResourceBundle.getBundle(NAME, it.value)
+            it.key to ResourceBundle.getBundle(NAME, it.value, UTF8Control())
         }.toMap()
     }
 
@@ -24,8 +26,8 @@ object i18n {
 
     operator fun get(locale: String) = supportedLocales[locale]
 
-    operator fun get(id: S, locale: String): String {
-        val bundle = languageBundles[locale] ?: DEFAULT_BUNDLE
+    operator fun get(id: S, language: String): String {
+        val bundle = languageBundles[language] ?: DEFAULT_BUNDLE
         return bundle.getString(id.toString())
     }
 
@@ -34,7 +36,10 @@ object i18n {
 }
 
 enum class S {
+    NAME,
+    TODAY,
     CURRENT_TIME,
+    CURRENT_TIME_SINGLE,
     CITY_NOT_FOUND,
     WEATHER,
     YOUR_TASKS,
@@ -51,9 +56,17 @@ enum class S {
     DOING_TASK,
     MULTITASKING,
     DEADLINE,
-    DEADLINE_SPEECH;
+    DEADLINE_SPEECH,
+    IS,
+    WAS,
+    OF,
+    AND;
 }
 
 fun StringBuilder.append(id: S, locale: String) = append(i18n[id, locale])
 
-fun String.toLocale() = i18n[this]
+fun String.toLocale() = i18n[this]!!
+
+fun String.isSpanish() = this == "es"
+
+fun String.isEnglish() = this == "en"

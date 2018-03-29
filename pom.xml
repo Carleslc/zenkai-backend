@@ -14,7 +14,7 @@
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>2.0.0.RELEASE</version>
+		<version>2.0.0.M3</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 
@@ -23,6 +23,8 @@
 		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 		<java.version>1.8</java.version>
 		<kotlin.version>1.2.30</kotlin.version>
+		<spring-social.version>2.0.0.M3</spring-social.version>
+		<actions-on-google.version>1.6.4</actions-on-google.version>
 	</properties>
 
 	<repositories>
@@ -67,14 +69,12 @@
 		<dependency>
 			<groupId>com.tmsdurham.actions</groupId>
 			<artifactId>actions-on-google</artifactId>
-			<version>1.6.4</version>
-			<type>jar</type>
+			<version>${actions-on-google.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>com.tmsdurham.actions</groupId>
 			<artifactId>actions-on-google-core</artifactId>
-			<version>1.6.4</version>
-			<type>jar</type>
+			<version>${actions-on-google.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>com.google.code.gson</groupId>
@@ -105,7 +105,27 @@
 			<artifactId>kotlin-reflect-tools-for-jvm</artifactId>
 			<version>1.1.1</version>
 		</dependency>
-	</dependencies>
+		<dependency>
+			<groupId>org.springframework.social</groupId>
+			<artifactId>spring-social-core</artifactId>
+			<version>${spring-social.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.social</groupId>
+			<artifactId>spring-social-web</artifactId>
+			<version>${spring-social.version}</version>
+		</dependency>
+        <dependency>
+            <groupId>org.springframework.social</groupId>
+            <artifactId>spring-social-config</artifactId>
+            <version>${spring-social.version}</version>
+        </dependency>
+		<dependency>
+			<groupId>org.springframework.social</groupId>
+			<artifactId>spring-social-security</artifactId>
+			<version>${spring-social.version}</version>
+		</dependency>
+    </dependencies>
 
 	<build>
 		<sourceDirectory>${project.basedir}/src/main/kotlin</sourceDirectory>

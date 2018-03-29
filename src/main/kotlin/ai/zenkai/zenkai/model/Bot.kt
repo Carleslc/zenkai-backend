@@ -42,6 +42,8 @@ data class Bot(val language: String,
 
     val query by lazy { action.request.body.result.resolvedQuery }
 
+    val accessToken by lazy { action.request.body.originalRequest?.data?.user?.accessToken }
+
     fun tell(message: String) {
         addMessage(message)
         send()
@@ -84,7 +86,7 @@ data class Bot(val language: String,
         logger.info("Needs login $type")
         error = LoginError(type)
         addMessage("I cannot do that without access to your $type account, what is your token?")
-        addText(type.authUrl)
+        addText(type.authParams)
     }
 
     private fun badRequest(message: String? = null) {
@@ -180,11 +182,12 @@ data class Bot(val language: String,
 
         private fun parseLanguage(language: String?): String {
             checkMissing(language, "language")
-            return if (language!! !in i18n) {
+            val langCode = language!!.split('-')[0]
+            return if (langCode !in i18n) {
                 val default = i18n.default()
-                logger.warn("Language $language not supported, default to $default")
+                logger.warn("Language $langCode not supported, default to $default")
                 default
-            } else language
+            } else langCode
         }
 
         @Throws(IllegalArgumentException::class)
