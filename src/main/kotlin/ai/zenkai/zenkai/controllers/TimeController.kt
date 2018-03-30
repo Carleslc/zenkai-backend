@@ -21,6 +21,7 @@ class TimeController(private val clockService: ClockService) {
     @GetMapping("/time", produces = ["application/json"])
     fun time(@RequestParam(value = "timezone", defaultValue = DEFAULT_TIMEZONE_ID) timezone: String,
              @RequestParam(value = "language", defaultValue = DEFAULT_LANGUAGE) language: String): ResponseEntity<*> {
+        // Only for testing purpose
         return try {
             ok(Time(clockService.formatNow(language, timezone), timezone))
         } catch (e: Exception) {

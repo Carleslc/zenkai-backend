@@ -1,35 +1,38 @@
 package ai.zenkai.zenkai.services.calendar
 
+import ai.zenkai.zenkai.cleanFormat
 import ai.zenkai.zenkai.i18n.S
 import ai.zenkai.zenkai.i18n.i18n
 import ai.zenkai.zenkai.i18n.toLocale
 import ai.zenkai.zenkai.services.clock.ClockService
+import ai.zenkai.zenkai.words
+import me.carleslc.kotlin.extensions.standard.println
 import me.carleslc.kotlin.extensions.time.toDate
 import org.ocpsoft.prettytime.PrettyTime
+import org.ocpsoft.prettytime.nlp.PrettyTimeParser
 import org.springframework.stereotype.Service
-import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.Month
-import java.time.ZoneId
+import java.time.*
 import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
 import java.time.format.TextStyle
 import java.util.*
 
 @Service
 class CalendarService(private val clockService: ClockService) {
 
-    private val prettyTime by lazy { PrettyTime() }
-    private val simpleDateFormatter by lazy { DateTimeFormatter.ofLocalizedDate(FormatStyle.SHORT) }
+    private val prettyTimeFormatter by lazy { PrettyTime() }
+    private val prettyTimeParser by lazy { PrettyTimeParser() }
     private val dialogFlowDateFormatter by lazy { DateTimeFormatter.ofPattern("yyyy-MM-dd") }
+
+    private val daysOfWeek by lazy { i18n.map { it to getDaysOfWeek(it) }.toMap() }
+    private val months by lazy { i18n.map { it to getMonths(it) }.toMap() }
 
     fun today(zoneId: ZoneId): LocalDate = LocalDate.now(zoneId)
 
-    fun toDate(date: String, language: String): LocalDate {
-        return LocalDate.parse(date, dialogFlowDateFormatter.withLocale(language.toLocale()))
+    fun parse(date: String): LocalDate {
+        return LocalDate.parse(date, dialogFlowDateFormatter)
     }
 
-    fun formatDate(date: LocalDate, language: String): String = simpleDateFormatter.withLocale(language.toLocale()).format(date)
+    fun formatDate(date: LocalDate): String = dialogFlowDateFormatter.format(date)
 
     fun prettyApproxDateTime(date: LocalDateTime, zoneId: ZoneId, language: String): String {
         return "${prettyApprox(date, zoneId, language)} (${prettyDateTime(date, language)})"
@@ -62,13 +65,61 @@ class CalendarService(private val clockService: ClockService) {
     }
 
     fun getDayOfMonth(date: LocalDate, language: String): String {
-        return "${withDateSuffix(date.dayOfMonth, language)} ${i18n[S.OF, language]} ${date.month.getDisplayName(TextStyle.FULL, language.toLocale())}"
+        return "${withDateSuffix(date.dayOfMonth, language)} ${i18n[S.OF, language]} " +
+                date.month.getDisplayName(TextStyle.FULL, language.toLocale())
     }
 
-    fun getDayOfWeek(date: LocalDate, locale: Locale): String = date.dayOfWeek.getDisplayName(TextStyle.FULL, locale)
+    fun getDayOfWeek(date: LocalDate, locale: Locale): String = date.dayOfWeek.displayName(locale)
     fun getDayOfWeek(date: LocalDate, language: String): String = getDayOfWeek(date, language.toLocale())
 
-    private fun prettyTime(locale: Locale) = prettyTime.apply { this.locale = locale }
+    fun isDayOfWeek(query: String, language: String): Boolean {
+        val locale = language.toLocale()
+        return query.cleanFormat(locale).words(locale).any { it in daysOfWeek[language]!! }
+    }
+
+    fun isDayOfMonth(query: String, language: String): Boolean {
+        val locale = language.toLocale()
+        return query.cleanFormat(locale).words(locale).any { it in months[language]!! }
+    }
+
+    fun isPast(query: String, language: String): Boolean {
+        val lower = query.toLowerCase()
+        return i18n[S.TOMORROW, language] !in lower && (i18n[S.WAS, language] in lower || i18n[S.PAST, language] in lower
+                || i18n[S.AGO, language] in lower || i18n[S.PREVIOUS, language] in lower)
+    }
+
+    fun inPeriod(dayOfWeek: DayOfWeek, period: DatePeriod, refDate: LocalDate): LocalDate {
+        val isPast = refDate >= period.end
+        val startOfMove = (if (isPast) period.start else period.end).atStartOfWeek()
+        val currentOffset = (dayOfWeek.value - DayOfWeek.MONDAY.value).toLong()
+        return startOfMove.plusDays(currentOffset)
+    }
+
+    private fun prettyTime(locale: Locale) = prettyTimeFormatter.apply { this.locale = locale }
     private fun prettyTime(language: String) = prettyTime(language.toLocale())
 
+    private fun getDaysOfWeek(language: String): Set<String> {
+        val locale = language.toLocale()
+        return DayOfWeek.values().map { it.displayName(locale).cleanFormat(locale) }.toSet()
+    }
+
+    private fun getMonths(language: String): Set<String> {
+        val locale = language.toLocale()
+        return Month.values().map { it.displayName(locale).cleanFormat(locale) }.toSet()
+    }
+
 }
+
+fun LocalDate.atStartOfWeek(): LocalDate {
+    val offset = (dayOfWeek.value - DayOfWeek.MONDAY.value).toLong()
+    return minusDays(offset)
+}
+
+fun LocalDate.atEndOfWeek(): LocalDate {
+    val offset = (DayOfWeek.SUNDAY.value - dayOfWeek.value).toLong()
+    return plusDays(offset)
+}
+
+fun DayOfWeek.displayName(locale: Locale): String = getDisplayName(TextStyle.FULL, locale)
+
+fun Month.displayName(locale: Locale): String = getDisplayName(TextStyle.FULL, locale)

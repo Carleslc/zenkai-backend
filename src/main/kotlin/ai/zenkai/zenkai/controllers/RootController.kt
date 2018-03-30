@@ -1,12 +1,11 @@
 package ai.zenkai.zenkai.controllers
 
-import ai.zenkai.zenkai.CachedHttpServletRequest
+import ai.zenkai.zenkai.*
 import ai.zenkai.zenkai.exceptions.badRequest
 import ai.zenkai.zenkai.exceptions.multicatch
-import ai.zenkai.zenkai.fixInt
 import ai.zenkai.zenkai.i18n.S
 import ai.zenkai.zenkai.i18n.i18n
-import ai.zenkai.zenkai.i18n.isSpanish
+import ai.zenkai.zenkai.i18n.toLocale
 import ai.zenkai.zenkai.model.Bot
 import ai.zenkai.zenkai.model.Handler
 import ai.zenkai.zenkai.model.Task
@@ -14,18 +13,27 @@ import ai.zenkai.zenkai.model.TaskStatus
 import ai.zenkai.zenkai.model.TaskStatus.*
 import ai.zenkai.zenkai.model.TokenType.TRELLO
 import ai.zenkai.zenkai.services.calendar.CalendarService
+import ai.zenkai.zenkai.services.calendar.DatePeriod
+import ai.zenkai.zenkai.services.calendar.displayName
 import ai.zenkai.zenkai.services.clock.ClockService
 import ai.zenkai.zenkai.services.tasks.TaskService
 import ai.zenkai.zenkai.services.weather.WeatherService
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
 import me.carleslc.kotlin.extensions.html.h
+import me.carleslc.kotlin.extensions.standard.isNotNull
+import me.carleslc.kotlin.extensions.standard.isNull
+import me.carleslc.kotlin.extensions.standard.letIf
+import me.carleslc.kotlin.extensions.standard.println
+import me.carleslc.kotlin.extensions.strings.isNotNullOrBlank
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RestController
+import java.time.DayOfWeek
 import java.time.ZoneId
+import java.time.format.TextStyle
 import javax.servlet.http.HttpServletRequest
 import javax.servlet.http.HttpServletResponse
 
@@ -58,31 +66,32 @@ class RootController(private val clockService: ClockService,
         val a = getDouble("number1")
         val b = getDouble("number2")
         val result = a + b
-        tell("The sum of ${fixInt(a)} and ${fixInt(b)} is ${fixInt(result)}")
+
+        tell(get(S.SUM).replace("\$1" to fixInt(a), "\$2" to fixInt(b), "\$3" to fixInt(result)))
     }
 
     fun Bot.substract() {
         val a = getDouble("number1")
         val b = getDouble("number2")
         val result = a - b
-        tell("The difference between ${fixInt(a)} and ${fixInt(b)} is ${fixInt(result)}")
+        tell(get(S.SUBSTRACT).replace("\$1" to fixInt(a), "\$2" to fixInt(b), "\$3" to fixInt(result)))
     }
 
     fun Bot.multiply() {
         val a = getDouble("number1")
         val b = getDouble("number2")
         val result = a * b
-        tell("${fixInt(a)} times ${fixInt(b)} is ${fixInt(result)}")
+        tell(get(S.MULTIPLY).replace("\$1" to fixInt(a), "\$2" to fixInt(b), "\$3" to fixInt(result)))
     }
 
     fun Bot.divide() {
         val a = getDouble("number1")
         val b = getDouble("number2")
         if (b == 0.toDouble()) {
-            tell("Cannot divide by 0!")
+            tell(S.DIVIDE_ZERO)
         } else {
             val result = a / b
-            tell("${fixInt(a)} divided by ${fixInt(b)} is ${fixInt(result)}")
+            tell(get(S.DIVIDE).replace("\$1" to fixInt(a), "\$2" to fixInt(b), "\$3" to fixInt(result)))
         }
     }
 
@@ -104,36 +113,71 @@ class RootController(private val clockService: ClockService,
         tell(speech, formattedTime)
     }
 
-    fun Bot.calendar() {
-        var original = getString("date-original")
-        var date = getDate("date")
+    fun Bot.calendarPeriod() {
+        val today = calendarService.today(timezone)
+        val dayOfWeek = getString("day-of-week")?.let { DayOfWeek.valueOf(it) }
+        val period = getDate("period")?.let { DatePeriod(it, calendarService) }
+        val original = getString("period-original")?.toLowerCase(locale).orEmpty()
 
-        if (language.isSpanish() && "semana pasada" in query) { // fix Dialogflow misunderstanding
-            date = date.minusWeeks(1)
-        }
+        val date = calendarService.inPeriod(dayOfWeek ?: today.dayOfWeek,
+                period ?: DatePeriod.default(calendarService), today)
 
-        val be = isOrWas(date)
-
-        var raw = ""
-        val format = if (original == null || original.isBlank()) {
-            original = get(S.TODAY)
+        val format = if (dayOfWeek.isNull()) {
             calendarService.prettyDate(date, language)
-        } else if (original.contains("[0-9]".toRegex())) {
-            raw = " (${calendarService.formatDate(date, language)})"
-            calendarService.getDayOfWeek(date, language)
         } else {
             calendarService.getDayOfMonth(date, language)
         }
 
-        val speech = "${original.capitalize()} $be $format"
-        val display = "$speech$raw"
-        tell(speech, display)
+        val originalString = original.clean().capitalize()
+        var be = isOrWas(date)
+        if (originalString.isBlank()) be = be.capitalize()
+        tell("$originalString $be $format".trim())
+    }
+
+    fun Bot.calendar() {
+        val today = calendarService.today(timezone)
+        var date = getDate("date") ?: today
+        val original = getString("date-original")?.toLowerCase(locale) ?: get(S.TODAY)
+        val dateAsk = getString("date-ask")?.clean()?.toLowerCase(locale)
+        val isAsking = dateAsk.isNotNullOrBlank()
+
+        fun processAskingOr(notAsking: () -> String): String {
+            return if (isAsking) {
+                if (calendarService.isDayOfWeek(dateAsk!!, language)) {
+                    logger.info("Asking Day of Week")
+                    calendarService.getDayOfWeek(date, language)
+                } else {
+                    logger.info("Asking Day of Month")
+                    calendarService.getDayOfMonth(date, language)
+                }
+            } else notAsking()
+        }
+
+        val queryDayOfWeek = calendarService.isDayOfWeek(original, language)
+
+        if (calendarService.isPast(query, language) && date >= today) {
+            date = if (queryDayOfWeek) date.minusWeeks(1) else date.minusYears(1)
+        }
+
+        val format = when {
+            queryDayOfWeek -> {
+                logger.info("Query Day of Week")
+                processAskingOr { calendarService.getDayOfMonth(date, language) }
+            }
+            calendarService.isDayOfMonth(original, language) -> {
+                logger.info("Query Day of Month")
+                processAskingOr { calendarService.getDayOfWeek(date, language) }
+            }
+            else -> processAskingOr { calendarService.prettyDate(date, language) }
+        }
+
+        tell("${original.clean().capitalize()} ${isOrWas(date)} $format")
     }
 
     fun Bot.readTasks() {
         requireToken(TRELLO) { trelloToken ->
             val taskType = getString("task-type")
-            logger.info("Task Type $taskType")
+            logger.debug("Task Type $taskType")
             val status = if (taskType != null) {
                 TaskStatus.valueOf(taskType.toString())
             } else TaskStatus.default()
@@ -170,29 +214,11 @@ class RootController(private val clockService: ClockService,
                     addMessage(initialMessage)
                     if (isNotEmpty()) {
                         addMessage(get(if (size == 1) S.YOUR_TASK else S.YOUR_TASKS))
-                        forEach { addMessage(it.getSpeech(language, timezone), it.getDisplayText(language, timezone)) }
+                        forEach(::addTask)
                     }
                     send()
                 }
             }
-        }
-    }
-
-    fun Task.getDisplayText(language: String, zoneId: ZoneId) = buildString {
-        appendln(title)
-        if (deadline != null) {
-            append(i18n[S.DEADLINE, language]).append(' ').appendln(calendarService.prettyApproxDateTime(deadline, zoneId, language))
-        }
-        appendln(description)
-        if (tags.isNotEmpty()) {
-            appendln(tags.joinToString(prefix = "Tags: "))
-        }
-    }
-
-    fun Task.getSpeech(language: String, zoneId: ZoneId) = buildString {
-        append(title)
-        if (deadline != null) {
-            append(' ').append(i18n[S.DEADLINE_SPEECH, language]).append(' ').append(calendarService.prettyApprox(deadline, zoneId, language))
         }
     }
 
@@ -204,6 +230,7 @@ class RootController(private val clockService: ClockService,
             "weather" to { b -> b.weather() },
             "time.get" to { b -> b.clock() },
             "date.get" to { b -> b.calendar() },
+            "date.period" to { b -> b.calendarPeriod() },
             "tasks.read" to { b -> b.readTasks() }
     )
 

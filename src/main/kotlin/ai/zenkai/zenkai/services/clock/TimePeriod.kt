@@ -1,4 +1,4 @@
-package ai.zenkai.zenkai.model
+package ai.zenkai.zenkai.services.clock
 
 import java.time.LocalTime
 

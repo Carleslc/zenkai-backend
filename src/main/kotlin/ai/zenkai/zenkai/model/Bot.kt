@@ -3,21 +3,26 @@ package ai.zenkai.zenkai.model
 import ai.zenkai.zenkai.exceptions.BadRequestError
 import ai.zenkai.zenkai.exceptions.BotError
 import ai.zenkai.zenkai.exceptions.LoginError
+import ai.zenkai.zenkai.i18n.DEFAULT_LANGUAGE
 import ai.zenkai.zenkai.i18n.S
 import ai.zenkai.zenkai.i18n.i18n
+import ai.zenkai.zenkai.i18n.toLocale
 import ai.zenkai.zenkai.nullIfBlank
 import ai.zenkai.zenkai.services.calendar.CalendarService
+import ai.zenkai.zenkai.services.calendar.DatePeriod
 import ai.zenkai.zenkai.services.clock.DEFAULT_TIME_ZONE
 import ai.zenkai.zenkai.services.clock.toZoneIdOrThrow
+import arrow.data.Try
+import arrow.data.getOrElse
 import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.tmsdurham.actions.DialogflowApp
 import com.tmsdurham.actions.SimpleResponse
 import main.java.com.tmsdurham.dialogflow.sample.DialogflowAction
+import me.carleslc.kotlin.extensions.standard.isNotNull
 import me.carleslc.kotlin.extensions.standard.isNull
 import me.carleslc.kotlin.extensions.standard.letIf
 import me.carleslc.kotlin.extensions.strings.isNotNullOrBlank
-import org.funktionale.tries.Try
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -44,10 +49,14 @@ data class Bot(val language: String,
 
     val accessToken by lazy { action.request.body.originalRequest?.data?.user?.accessToken }
 
+    val locale by lazy { language.toLocale() }
+
     fun tell(message: String) {
         addMessage(message)
         send()
     }
+
+    fun tell(id: S) = tell(get(id))
 
     fun tell(textToSpeech: String? = null, displayText: String? = null) {
         if (addMessage(textToSpeech, displayText)) {
@@ -56,6 +65,10 @@ data class Bot(val language: String,
     }
 
     fun addMessage(s: String) = addMessage(s, s)
+
+    fun addMessages(s: String) {
+        s.split('\n').forEach { addMessage(it) }
+    }
 
     fun addSpeech(speech: String) = addMessage(textToSpeech = speech)
 
@@ -67,6 +80,12 @@ data class Bot(val language: String,
             return true
         }
         return false
+    }
+
+    fun addTask(task: Task) {
+        with(task) {
+            addMessage(getSpeech(language, timezone, calendarService), getDisplayText(language, timezone, calendarService))
+        }
     }
 
     fun <T> fill(obj: T?, default: String, fill: T.() -> String) {
@@ -85,8 +104,10 @@ data class Bot(val language: String,
     private fun needsLogin(type: TokenType) {
         logger.info("Needs login $type")
         error = LoginError(type)
-        addMessage("I cannot do that without access to your $type account, what is your token?")
+        val messages = get(S.LOGIN_TOKEN).replace("\$type", type.toString()).split('\n')
+        addMessage(messages[0])
         addText(type.authParams)
+        addMessage(messages[1])
     }
 
     private fun badRequest(message: String? = null) {
@@ -102,24 +123,60 @@ data class Bot(val language: String,
                     "tokens" to tokens.map { Token(it.key.name, it.value) })
                     .apply { if (error != null) this["error"] = error }, ask)
 
-    fun getParam(param: String, context: String = USER_CONTEXT): Any? {
-        return action.getArgument(param) ?: // try to get from parameters
+    fun getParam(param: String): Any? = action.getArgument(param)
+
+    fun getParamWithContext(param: String, context: String = USER_CONTEXT): Any? {
+        return getParam(param) ?: // try to get from parameters
             action.getContextArgument(context, param)?.value // else try to get from context
     }
 
-    fun getString(param: String, context: String = USER_CONTEXT): String? {
-        return getParam(param, context)?.toString()
+    fun getStringWithContext(param: String, context: String = USER_CONTEXT): String? {
+        val retrieved = getParamWithContext(param, context)?.toString()
+        return if (retrieved.isNullOrBlank()) null else retrieved
     }
 
-    fun getNestedString(keys: Pair<String, String>, context: String = USER_CONTEXT): String? {
-        val param = getParam(keys.first, context) ?: return null
+    fun getString(param: String): String? {
+        val retrieved = getParam(param)?.toString()
+        return if (retrieved.isNullOrBlank()) null else retrieved
+    }
+
+    fun getNestedString(keys: Pair<String, String>): String? {
+        val param = getParam(keys.first) ?: return null
         return if (param is Map<*,*>) param[keys.second]?.toString() else param.toString()
     }
 
-    fun getDouble(param: String, context: String = USER_CONTEXT): Double = getString(param, context)?.toDouble() ?: 0.toDouble()
+    fun getDoubleWithContext(param: String, context: String = USER_CONTEXT): Double {
+        return getStringWithContext(param, context)?.toDouble() ?: 0.toDouble()
+    }
 
-    fun getDate(param: String, context: String = USER_CONTEXT): LocalDate = getString(param, context).orEmpty()
-            .letIf(String::isNotBlank, { calendarService.toDate(it, language) }, { calendarService.today(timezone) })
+    fun getDouble(param: String): Double = getString(param)?.toDouble() ?: 0.toDouble()
+
+    fun getDateOrNullWithContext(param: String, context: String = USER_CONTEXT): LocalDate? {
+        return getStringWithContext(param, context).orEmpty()
+                .letIf(String::isNotEmpty, { calendarService.parse(it) }, { null })
+    }
+
+    fun getDateOrNull(param: String): LocalDate? = getString(param).orEmpty()
+            .letIf(String::isNotEmpty, { calendarService.parse(it) }, { null })
+
+    fun getDateWithContext(param: String, context: String = USER_CONTEXT): LocalDate? {
+        return getDateOrNullWithContext(param, context)
+    }
+
+    fun getDate(param: String): LocalDate? = getDateOrNull(param)
+
+    fun getDatePeriodWithContext(param: String, context: String = USER_CONTEXT): DatePeriod? {
+        return getStringWithContext(param, context)?.let { DatePeriod.parse(it, calendarService) }
+    }
+
+    fun getDatePeriod(param: String): DatePeriod? {
+        val arg = getParam(param) ?: return null
+        return if (arg is Map<*,*>) {
+            val start = arg["startDate"]?.toString() ?: return null
+            val end = arg["endDate"]?.toString() ?: return null
+            DatePeriod(start, end, calendarService)
+        } else DatePeriod.parse(arg.toString(), calendarService)
+    }
 
     fun isOrWas(date: LocalDate) = get(if (date.isBefore(calendarService.today(timezone))) S.WAS else S.IS)
 
@@ -133,7 +190,6 @@ data class Bot(val language: String,
                           intentMapper: Map<String, Handler>, calendarService: CalendarService) {
             val action = DialogflowAction(req, res, gson).app
             try {
-                logger.info("Handle Request")
                 val handler = intentMapper[action.getIntent()]
                 if (handler != null) {
                     val language = parseLanguage(action.request.body.lang)
@@ -169,7 +225,7 @@ data class Bot(val language: String,
         private fun fillContextTokens(action: DialogflowApp, tokens: MutableMap<TokenType, String>) {
             TokenType.values().forEach {
                 if (it !in tokens) {
-                    val tokenParam = action.getContextArgument("user-logged-in", it.param)?.value
+                    val tokenParam = action.getContextArgument(USER_CONTEXT, it.param)?.value
                     if (tokenParam != null) {
                         val token = tokenParam.toString()
                         if (token.isNotBlank()) {
@@ -184,9 +240,8 @@ data class Bot(val language: String,
             checkMissing(language, "language")
             val langCode = language!!.split('-')[0]
             return if (langCode !in i18n) {
-                val default = i18n.default()
-                logger.warn("Language $langCode not supported, default to $default")
-                default
+                logger.warn("Language $langCode not supported, default to $DEFAULT_LANGUAGE")
+                DEFAULT_LANGUAGE
             } else langCode
         }
 
