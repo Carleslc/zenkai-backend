@@ -29,7 +29,7 @@ object i18n : Set<String> by linkedSetOf(DEFAULT_LANGUAGE, "es") {
         return bundle.getString(id.toString())
     }
 
-    operator fun get(id: S) = get(id, DEFAULT_LANGUAGE)
+    fun getNonTranslatable(id: S) = get(id, DEFAULT_LANGUAGE)
 
 }
 
@@ -50,8 +50,15 @@ enum class S {
     LOGIN_TOKEN,
     YOUR_TASKS,
     YOUR_TASK,
+    FOCUS_TODO,
     TODO,
+    DOING,
+    DONE,
+    SOMEDAY,
     TODO_SINGLE,
+    NEW_BOARD,
+    DEFAULT_BOARD_NAME,
+    DEFAULT_BOARD_DESCRIPTION,
     EMPTY_TODO,
     EMPTY_DONE,
     EMPTY_DOING,

@@ -2,8 +2,8 @@ package ai.zenkai.zenkai
 
 import me.carleslc.kotlin.extensions.number.round
 import me.carleslc.kotlin.extensions.strings.isNotNullOrBlank
-import java.text.Normalizer
 import java.text.BreakIterator
+import java.text.Normalizer
 import java.util.*
 import kotlin.coroutines.experimental.buildSequence
 
@@ -37,7 +37,7 @@ fun String.titleize() = toLowerCase()
         .remove("[-_]".toRegex())
         .split(" ").joinToString(" ", transform = String::capitalize)
 
-fun String.replace(vararg args: Pair<String, String>): String {
+fun String.replace(args: Collection<Pair<String, String>>): String {
     var result = this
     args.forEach {
         result = result.replace(it.first, it.second)
@@ -45,4 +45,16 @@ fun String.replace(vararg args: Pair<String, String>): String {
     return result
 }
 
+fun String.replace(vararg args: Pair<String, String>): String = replace(args.toList())
+
 fun String.removeAccents() = Normalizer.normalize(this, Normalizer.Form.NFD).remove(DIACRITICAL_MARKS)
+
+fun args(vararg args: String): String = args.joinToString(",")
+
+fun <K, V> Map<K, V>.asMutableMap() = this as? MutableMap<K, V> ?: toMutableMap()
+
+fun <K, V> Map<K, V>.add(entries: Map<K, V>) = asMutableMap().apply { putAll(entries) }
+
+fun <K, V> Map<K, V>.add(vararg entries: Pair<K, V>) = asMutableMap().apply { putAll(entries) }
+
+fun <T> Array<out T>.add(vararg elements: T) = toMutableList().apply { addAll(elements) }

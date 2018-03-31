@@ -91,9 +91,12 @@
 			<version>2.9.4.1</version>
 		</dependency>
 		<dependency>
-			<groupId>com.julienvey.trello</groupId>
-			<artifactId>trello-java-wrapper</artifactId>
-			<version>0.3.2</version>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-databind</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.datatype</groupId>
+			<artifactId>jackson-datatype-jdk8</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>org.ocpsoft.prettytime</groupId>

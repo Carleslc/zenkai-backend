@@ -12,6 +12,9 @@ import ai.zenkai.zenkai.services.calendar.CalendarService
 import ai.zenkai.zenkai.services.calendar.DatePeriod
 import ai.zenkai.zenkai.services.clock.DEFAULT_TIME_ZONE
 import ai.zenkai.zenkai.services.clock.toZoneIdOrThrow
+import ai.zenkai.zenkai.services.tasks.TasksListener
+import ai.zenkai.zenkai.services.tasks.TrelloTaskService
+import ai.zenkai.zenkai.services.tasks.trello.Board
 import arrow.data.Try
 import arrow.data.getOrElse
 import com.google.gson.Gson
@@ -19,13 +22,13 @@ import com.google.gson.JsonParser
 import com.tmsdurham.actions.DialogflowApp
 import com.tmsdurham.actions.SimpleResponse
 import main.java.com.tmsdurham.dialogflow.sample.DialogflowAction
-import me.carleslc.kotlin.extensions.standard.isNotNull
 import me.carleslc.kotlin.extensions.standard.isNull
 import me.carleslc.kotlin.extensions.standard.letIf
 import me.carleslc.kotlin.extensions.strings.isNotNullOrBlank
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
+import org.springframework.web.client.HttpClientErrorException
 import wu.seal.jvm.kotlinreflecttools.changePropertyValue
 import java.time.LocalDate
 import java.time.ZoneId
@@ -41,7 +44,7 @@ data class Bot(val language: String,
                private val action: DialogflowApp,
                private val tokens: Map<TokenType, String>,
                private val calendarService: CalendarService,
-               private var error: BotError? = null) {
+               private var error: BotError? = null) : TasksListener {
 
     private val messages by lazy { mutableListOf<SimpleResponse>() }
 
@@ -50,6 +53,8 @@ data class Bot(val language: String,
     val accessToken by lazy { action.request.body.originalRequest?.data?.user?.accessToken }
 
     val locale by lazy { language.toLocale() }
+
+    var lastRequiredToken: TokenType? = null
 
     fun tell(message: String) {
         addMessage(message)
@@ -92,27 +97,28 @@ data class Bot(val language: String,
         tell(if (obj.isNull()) default else fill(obj!!))
     }
 
-    fun requireToken(type: TokenType, block: (String) -> Unit) {
-        val token = tokens[type]
-        if (token == null) {
-            needsLogin(type)
-            send()
-        }
-        else block(token)
+    fun withTrello(block: TrelloTaskService.() -> Unit) = requireToken(TokenType.TRELLO) {
+        block(TrelloTaskService(it, language, this))
     }
 
-    private fun needsLogin(type: TokenType) {
-        logger.info("Needs login $type")
+    private fun requireToken(type: TokenType, block: (String) -> Unit) {
+        val token = tokens[type]
+        lastRequiredToken = type
+        if (token == null) {
+            needsLogin()
+        } else {
+            block(token)
+        }
+    }
+
+    private fun needsLogin() {
+        val type = lastRequiredToken!!
         error = LoginError(type)
         val messages = get(S.LOGIN_TOKEN).replace("\$type", type.toString()).split('\n')
         addMessage(messages[0])
-        addText(type.authParams)
+        addText(type.authUrl)
         addMessage(messages[1])
-    }
-
-    private fun badRequest(message: String? = null) {
-        error = BadRequestError(message)
-        logError(error, logger)
+        send()
     }
 
     fun send(ask: Boolean = false) = action.fillAndSend(messages.firstOrNull()?.textToSpeech,
@@ -182,6 +188,11 @@ data class Bot(val language: String,
 
     operator fun get(id: S): String = i18n[id, language]
 
+    override fun onNewBoard(board: Board) {
+        addMessage(get(S.NEW_BOARD))
+        addText(board.shortUrl)
+    }
+
     companion object Parser {
 
         val logger: Logger by lazy { LoggerFactory.getLogger(this::class.java) }
@@ -189,9 +200,12 @@ data class Bot(val language: String,
         fun handleRequest(req: HttpServletRequest, res: HttpServletResponse, gson: Gson,
                           intentMapper: Map<String, Handler>, calendarService: CalendarService) {
             val action = DialogflowAction(req, res, gson).app
+            var bot: Bot? = null
             try {
-                val handler = intentMapper[action.getIntent()]
+                val intent = action.getIntent()
+                val handler = intentMapper[intent]
                 if (handler != null) {
+                    logger.info("Intent $intent")
                     val language = parseLanguage(action.request.body.lang)
                     logger.info("Language $language")
                     val originalRequest = JsonParser().parse(req.body).asJsonObject?.getAsJsonObject("originalRequest")
@@ -203,35 +217,43 @@ data class Bot(val language: String,
                     }.getOrElse { DEFAULT_TIME_ZONE }
                     logger.info("Time Zone $timezone")
                     val tokens = mutableMapOf<TokenType, String>()
-                    fillDataTokens(data?.tokens, tokens)
                     fillContextTokens(action, tokens)
+                    fillDataTokens(data?.tokens, tokens)
                     tokens.forEach { action.fillParameter(it.key.param, it.value) }
                     logger.info("Tokens $tokens")
-                    handler(Bot(language, timezone, action, tokens, calendarService))
+                    bot = Bot(language, timezone, action, tokens, calendarService)
+                    handler(bot)
                 }
-            } catch (e: IllegalArgumentException) {
-                action.error(BadRequestError(e), logger)
-            }
-        }
-
-        private fun fillDataTokens(dataTokens: List<Token>?, tokens: MutableMap<TokenType, String>) {
-            dataTokens?.forEach {
-                if (it.token.isNotNullOrBlank() && it.type != null) {
-                    tokens[TokenType.valueOf(it.type)] = it.token!!
-                }
+            } catch (e: IllegalAccessException) {
+                action.badRequest(e)
+            } catch (e: HttpClientErrorException) {
+                if (bot != null && e.statusCode == HttpStatus.UNAUTHORIZED) {
+                    bot.needsLogin()
+                } else action.serviceUnavailable(e)
+            } catch (e: Exception) {
+                action.serviceUnavailable(e)
             }
         }
 
         private fun fillContextTokens(action: DialogflowApp, tokens: MutableMap<TokenType, String>) {
             TokenType.values().forEach {
                 if (it !in tokens) {
-                    val tokenParam = action.getContextArgument(USER_CONTEXT, it.param)?.value
-                    if (tokenParam != null) {
-                        val token = tokenParam.toString()
-                        if (token.isNotBlank()) {
-                            tokens[it] = token
-                        }
+                    var token = action.getArgument(it.param)?.toString().orEmpty()
+                    if (token.isBlank()) {
+                        token = action.getContextArgument(USER_CONTEXT, it.param)?.value?.toString().orEmpty()
                     }
+                    if (token.isNotBlank()) {
+                        tokens[it] = token
+                    }
+                }
+            }
+        }
+
+        private fun fillDataTokens(dataTokens: List<Token>?, tokens: MutableMap<TokenType, String>) {
+            dataTokens?.forEach {
+                if (it.token.isNotNullOrBlank() && it.type != null) {
+                    val tokenType = TokenType.valueOf(it.type)
+                    tokens.putIfAbsent(tokenType, it.token!!)
                 }
             }
         }
@@ -283,15 +305,23 @@ fun DialogflowApp.fillParameter(param: String, value: String) = with(request.bod
 
 private val logger get() = Bot.logger
 
-private fun DialogflowApp.error(error: BotError, logger: Logger) {
-    logError(error, logger)
+private fun DialogflowApp.error(error: BotError, e: Exception) {
+    logError(error, e)
     fillAndSend(error.message, mapOf("error" to error))
 }
 
-private fun logError(error: BotError?, logger: Logger) {
+private fun logError(error: BotError?, e: Exception) {
     if (error != null && error.status != HttpStatus.UNAUTHORIZED.value()) {
-        logger.warn(error.message)
+        logger.error(error.message, e)
     }
+}
+
+private fun DialogflowApp.badRequest(e: Exception) {
+    error(BadRequestError(e), e)
+}
+
+private fun DialogflowApp.serviceUnavailable(e: Exception) {
+    error(BotError(e.message, HttpStatus.SERVICE_UNAVAILABLE), e)
 }
 
 private fun DialogflowApp.fillAndSend(speech: String?, data: Map<String, Any>, ask: Boolean = false) {

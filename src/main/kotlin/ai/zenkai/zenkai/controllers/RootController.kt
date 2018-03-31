@@ -40,8 +40,7 @@ import javax.servlet.http.HttpServletResponse
 @RestController
 class RootController(private val clockService: ClockService,
                      private val calendarService: CalendarService,
-                     private val weatherService: WeatherService,
-                     private val tasksService: TaskService) {
+                     private val weatherService: WeatherService) {
 
     private val logger = LoggerFactory.getLogger(this::class.java)
 
@@ -174,50 +173,47 @@ class RootController(private val clockService: ClockService,
         tell("${original.clean().capitalize()} ${isOrWas(date)} $format")
     }
 
-    fun Bot.readTasks() {
-        requireToken(TRELLO) { trelloToken ->
-            val taskType = getString("task-type")
-            logger.debug("Task Type $taskType")
-            val status = if (taskType != null) {
-                TaskStatus.valueOf(taskType.toString())
-            } else TaskStatus.default()
-            val tasks = tasksService.getTasks(trelloToken, status)
-            with (tasks) {
-                var initialMessageId: S? = null
-                when (status) {
-                    DONE -> initialMessageId = when {
-                        isEmpty() -> S.EMPTY_DONE
-                        size == 1 -> S.COMPLETED_FIRST_TASK
-                        size < 5 -> S.COMPLETED_TASKS
-                        size < 20 -> S.COMPLETED_TASKS_CONGRATULATIONS
-                        else -> S.COMPLETED_TASKS_KEEP_IT_UP
-                    }
-                    DOING -> {
-                        initialMessageId = when {
-                            isEmpty() -> S.EMPTY_DOING
-                            size == 1 -> S.DOING_TASK
-                            else -> S.MULTITASKING
-                        }
-                    }
-                    TODO -> {
-                        initialMessageId = when {
-                            isEmpty() -> S.EMPTY_TODO
-                            size == 1 -> S.TODO_SINGLE
-                            count { it.status == DOING } > 1 -> S.MULTITASKING
-                            else -> S.TODO
-                        }
-                    }
-                    else -> { /* SOMEDAY, fallback to default answer */ }
+    fun Bot.readTasks() = withTrello {
+        val taskType = getString("task-type")
+        logger.info("Task Type $taskType")
+        val status = if (taskType != null) {
+            TaskStatus.valueOf(taskType.toString())
+        } else TaskStatus.default()
+        with (getDefaultBoard().getTasks(status)) {
+            var initialMessageId: S? = null
+            when (status) {
+                DONE -> initialMessageId = when {
+                    isEmpty() -> S.EMPTY_DONE
+                    size == 1 -> S.COMPLETED_FIRST_TASK
+                    size < 5 -> S.COMPLETED_TASKS
+                    size < 20 -> S.COMPLETED_TASKS_CONGRATULATIONS
+                    else -> S.COMPLETED_TASKS_KEEP_IT_UP
                 }
-                if (initialMessageId != null) {
-                    val initialMessage = get(initialMessageId).replace("\$size", size.toString())
-                    addMessage(initialMessage)
-                    if (isNotEmpty()) {
-                        addMessage(get(if (size == 1) S.YOUR_TASK else S.YOUR_TASKS))
-                        forEach(::addTask)
+                DOING -> {
+                    initialMessageId = when {
+                        isEmpty() -> S.EMPTY_DOING
+                        size == 1 -> S.DOING_TASK
+                        else -> S.MULTITASKING
                     }
-                    send()
                 }
+                TODO -> {
+                    initialMessageId = when {
+                        isEmpty() -> S.EMPTY_TODO
+                        size == 1 -> S.TODO_SINGLE
+                        count { it.status == DOING } > 1 -> S.MULTITASKING
+                        else -> S.FOCUS_TODO
+                    }
+                }
+                else -> { /* SOMEDAY, fallback to default answer */ }
+            }
+            if (initialMessageId != null) {
+                val initialMessage = get(initialMessageId).replace("\$size", size.toString())
+                addMessage(initialMessage)
+                if (isNotEmpty()) {
+                    addMessage(get(if (size == 1) S.YOUR_TASK else S.YOUR_TASKS))
+                    forEach(::addTask)
+                }
+                send()
             }
         }
     }

@@ -1,7 +1,6 @@
 package ai.zenkai.zenkai.services
 
-interface Service {
+interface Service
 
-    val url: String
-
-}
+typealias Parameter = Pair<String, String>
+typealias Parameters = Map<String, String>

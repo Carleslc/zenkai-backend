@@ -2,11 +2,11 @@ package ai.zenkai.zenkai.services.tasks
 
 import ai.zenkai.zenkai.model.Task
 import ai.zenkai.zenkai.model.TaskStatus
+import ai.zenkai.zenkai.services.Service
+import ai.zenkai.zenkai.services.tasks.trello.Board
 
-const val TASK_DISPLAY_LIMIT = 10
+interface TaskService : Service {
 
-interface TaskService {
-
-    fun getTasks(token: String, status: TaskStatus): List<Task>
+    fun Board.getTasks(status: TaskStatus): List<Task>
 
 }

@@ -1,22 +1,45 @@
 package ai.zenkai.zenkai.services.tasks
 
+import ai.zenkai.zenkai.config.TRELLO_API_KEY
+import ai.zenkai.zenkai.i18n.S
+import ai.zenkai.zenkai.i18n.i18n
+import ai.zenkai.zenkai.model.Bot
 import ai.zenkai.zenkai.model.Task
 import ai.zenkai.zenkai.model.TaskStatus
-import com.julienvey.trello.Trello
-import me.carleslc.kotlin.extensions.time.days
-import me.carleslc.kotlin.extensions.time.fromNow
-import org.springframework.security.core.context.SecurityContextHolder
-import org.springframework.social.connect.Connection
-import org.springframework.stereotype.Service
+import ai.zenkai.zenkai.services.tasks.trello.Board
+import ai.zenkai.zenkai.services.tasks.trello.Trello
 
-@Service
-class TrelloTaskService : TaskService {
+class TrelloTaskService(private val accessToken: String,
+                        private val language: String,
+                        private val tasksListener: TasksListener) : TaskService {
 
-    private val trello by lazy { (SecurityContextHolder.getContext().authentication.credentials as Connection<*>).api as Trello }
+    private val trello by lazy { Trello(TRELLO_API_KEY, accessToken) }
+
+    private val defaultBoardName by lazy { i18n[S.DEFAULT_BOARD_NAME, language] }
+
+    private val board by lazy { findDefaultBoard() }
 
     /** Sorted tasks (closer deadline first, in other case prevails Trello board list order) **/
-    override fun getTasks(token: String, status: TaskStatus): List<Task> {
-        return listOf(Task("Tarea de ejemplo", "¡Vamos \uD83E\uDD42!", TaskStatus.TODO, 5 days fromNow, listOf("EXAMPLE")))
+    override fun Board.getTasks(status: TaskStatus): List<Task> {
+        return listOf()
+    }
+
+    fun getDefaultBoard() = board
+
+    private fun findDefaultBoard(): Board {
+        val zenkaiBoard = trello.getBoards(mutableMapOf("filter" to "open"))
+                .find { it.name == defaultBoardName }
+        Bot.logger.info("Zenkai Board: $zenkaiBoard")
+        return zenkaiBoard ?: newDefaultBoard()
+    }
+
+    private fun newDefaultBoard(): Board {
+        val board = trello.newBoard(defaultBoardName, mutableMapOf(
+                "defaultLists" to "true",
+                "powerUps" to "cardAging",
+                "desc" to i18n[S.DEFAULT_BOARD_DESCRIPTION, language]))
+        tasksListener.onNewBoard(board)
+        return board
     }
 
 }

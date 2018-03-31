@@ -1,11 +1,7 @@
 spring:
   http:
     converters:
-      preferred-json-mapper: gson
-  social:
-      trello:
-        app-id: "73642f2e72b94b950a4699fdcf652eeb"
-        app-secret: "bc129ee528a4366459497cb53ce846fd141dd2b70c6fb6c5760ae99b833060cf"
+      preferred-json-mapper: jackson
 
 logging:
   level:
@@ -13,14 +9,3 @@ logging:
       springframework: "INFO"
       springframework.web: "DEBUG"
       hibernate: "ERROR"
-
-security:
-  oauth2:
-    client:
-      client-id: "889899151999-7et9uui09fjlurjpbgc1bflka3aci53d.apps.googleusercontent.com"
-      client-secret: "9P4U47hUPibmGEVp9vKKpU_P"
-      scope: "basic"
-      auto-approve-scopes: "basic"
-      authorized-grant-types: "authorization_code"
-      access-token-validity-seconds: 600
-      refresh-token-validity-seconds: -1
