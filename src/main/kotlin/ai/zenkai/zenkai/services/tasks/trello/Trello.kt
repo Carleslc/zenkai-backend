@@ -36,6 +36,11 @@ open class Trello(private val applicationKey: String, private val userToken: Str
         return attachService(post(getUrl(LISTS, richParams), TrelloList::class, richParams.withId(boardId).withKeyToken()))
     }
 
+    final override fun enablePowerUp(boardId: String, powerUpId: String, params: Parameters): Boolean {
+        val richParams = params.add("idPlugin" to powerUpId)
+        return post(getUrl(POWER_UP, richParams), richParams.withId(boardId).withKeyToken()).isOk()
+    }
+
     protected fun <E: TrelloEntity> attachService(entity: E): E = entity.apply { attachService(this@Trello) }
 
     protected fun <E: TrelloEntity> attachService(entities: List<E>): List<E> {

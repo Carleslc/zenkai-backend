@@ -9,7 +9,8 @@ enum class TrelloEndpoint(url: String) : BaseEndpoint {
     MEMBER_BOARDS("/members/{id}/boards"),
     BOARDS("/boards"),
     BOARD("/boards/{id}"),
-    LISTS("/boards/{id}/lists");
+    LISTS("/boards/{id}/lists"),
+    POWER_UP("/boards/{id}/boardPlugins");
 
     override val url = "$TRELLO_API$url"
 }

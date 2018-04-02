@@ -26,6 +26,8 @@ data class Board(val id: String,
 
     fun newList(name: String, params: Parameters = parameters()) = service.newList(id, name, params)
 
+    fun enablePowerUp(powerUpId: String) = service.enablePowerUp(id, powerUpId)
+
     override fun attachService(service: Trello) {
         super.attachService(service)
         lists?.forEach { it.attachService(service) }

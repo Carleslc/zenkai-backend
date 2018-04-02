@@ -23,6 +23,11 @@ open class RestTemplateHttpClient {
         return REST.postForObject(url, null, klass.java, params)!!
     }
 
+    protected fun post(url: String, params: Parameters): HttpResponse {
+        val response = REST.postForEntity(url, null, Any::class.java, params)
+        return HttpResponse(response.body, response.statusCodeValue)
+    }
+
     private fun <T: Any> getArrayType(klass: KClass<T>) = object : ParameterizedTypeReference<Array<T>>(){
         override fun getType(): Type {
             return TypeFactory.defaultInstance().constructArrayType(klass.java)

@@ -4,16 +4,14 @@ import ai.zenkai.zenkai.config.TRELLO_API_KEY
 import ai.zenkai.zenkai.i18n.DEFAULT_LANGUAGE
 import ai.zenkai.zenkai.i18n.S
 import ai.zenkai.zenkai.i18n.i18n
-import ai.zenkai.zenkai.i18n.toLocale
 import ai.zenkai.zenkai.model.Bot
 import ai.zenkai.zenkai.model.Task
 import ai.zenkai.zenkai.model.TaskStatus
-import ai.zenkai.zenkai.services.Parameters
 import ai.zenkai.zenkai.services.parameters
 import ai.zenkai.zenkai.services.tasks.trello.Board
 import ai.zenkai.zenkai.services.tasks.trello.Member
+import ai.zenkai.zenkai.services.tasks.trello.PowerUp
 import ai.zenkai.zenkai.services.tasks.trello.Trello
-import java.util.*
 
 class TrelloTaskService(private val accessToken: String,
                         private val language: String,
@@ -56,7 +54,9 @@ class TrelloTaskService(private val accessToken: String,
         val board = trello.newBoard(defaultBoardName, parameters(
                 "defaultLists" to "$trelloLocaleIsSupported",
                 "powerUps" to "cardAging",
+                "prefs_cardAging" to "regular",
                 "desc" to i18n[S.DEFAULT_BOARD_DESCRIPTION, language]))
+        board.enablePowerUp(PowerUp.CARD_AGING.id)
         if (!trelloLocaleIsSupported) {
             Bot.logger.info("Language $language not supported, default to $DEFAULT_LANGUAGE")
             val bottom = parameters("pos" to "bottom")
