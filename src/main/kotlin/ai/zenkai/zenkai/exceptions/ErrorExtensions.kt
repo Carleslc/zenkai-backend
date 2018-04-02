@@ -1,5 +1,6 @@
 package ai.zenkai.zenkai.exceptions
 
+import ai.zenkai.zenkai.model.Token
 import ai.zenkai.zenkai.model.TokenType
 import com.google.gson.Gson
 import org.springframework.http.HttpStatus
@@ -36,7 +37,9 @@ open class BotError(val message: String?, @Transient private val httpStatus: Htt
     fun getResponseEntity() = ResponseEntity(this, httpStatus)
 }
 
-class LoginError(val login: TokenType): BotError("Login required", HttpStatus.UNAUTHORIZED)
+class LoginError(val login: Token): BotError("Login required", HttpStatus.UNAUTHORIZED) {
+    constructor(type: TokenType) : this(Token(type, null))
+}
 
 class BadRequestError(message: String?): BotError(message, HttpStatus.BAD_REQUEST) {
     constructor(e: Exception): this(e.message)

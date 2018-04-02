@@ -34,6 +34,9 @@ object i18n : Set<String> by linkedSetOf(DEFAULT_LANGUAGE, "es") {
 }
 
 enum class S {
+    GREETINGS,
+    GREETINGS_LOGGED,
+    GREETINGS_LOGIN,
     NAME,
     SUM,
     SUBSTRACT,
@@ -50,12 +53,12 @@ enum class S {
     LOGIN_TOKEN,
     YOUR_TASKS,
     YOUR_TASK,
-    FOCUS_TODO,
+    TODO_SINGLE,
+    TODO_FOCUS,
     TODO,
     DOING,
     DONE,
     SOMEDAY,
-    TODO_SINGLE,
     NEW_BOARD,
     DEFAULT_BOARD_NAME,
     DEFAULT_BOARD_DESCRIPTION,

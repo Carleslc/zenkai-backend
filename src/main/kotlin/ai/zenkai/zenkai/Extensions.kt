@@ -49,8 +49,6 @@ fun String.replace(vararg args: Pair<String, String>): String = replace(args.toL
 
 fun String.removeAccents() = Normalizer.normalize(this, Normalizer.Form.NFD).remove(DIACRITICAL_MARKS)
 
-fun args(vararg args: String): String = args.joinToString(",")
-
 fun <K, V> Map<K, V>.asMutableMap() = this as? MutableMap<K, V> ?: toMutableMap()
 
 fun <K, V> Map<K, V>.add(entries: Map<K, V>) = asMutableMap().apply { putAll(entries) }

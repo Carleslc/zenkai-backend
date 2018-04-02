@@ -2,9 +2,13 @@ package ai.zenkai.zenkai.services
 
 import com.fasterxml.jackson.annotation.JsonIgnore
 
-open class ServiceEntity<S: Service> {
+abstract class ServiceEntity<S: Service> {
 
     @JsonIgnore
-    lateinit var service: S
+    protected lateinit var service: S
+
+    open fun attachService(service: S) {
+        this.service = service
+    }
 
 }

@@ -4,27 +4,17 @@ import ai.zenkai.zenkai.*
 import ai.zenkai.zenkai.exceptions.badRequest
 import ai.zenkai.zenkai.exceptions.multicatch
 import ai.zenkai.zenkai.i18n.S
-import ai.zenkai.zenkai.i18n.i18n
-import ai.zenkai.zenkai.i18n.toLocale
-import ai.zenkai.zenkai.model.Bot
-import ai.zenkai.zenkai.model.Handler
-import ai.zenkai.zenkai.model.Task
-import ai.zenkai.zenkai.model.TaskStatus
+import ai.zenkai.zenkai.model.*
 import ai.zenkai.zenkai.model.TaskStatus.*
 import ai.zenkai.zenkai.model.TokenType.TRELLO
 import ai.zenkai.zenkai.services.calendar.CalendarService
 import ai.zenkai.zenkai.services.calendar.DatePeriod
-import ai.zenkai.zenkai.services.calendar.displayName
 import ai.zenkai.zenkai.services.clock.ClockService
-import ai.zenkai.zenkai.services.tasks.TaskService
 import ai.zenkai.zenkai.services.weather.WeatherService
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
 import me.carleslc.kotlin.extensions.html.h
-import me.carleslc.kotlin.extensions.standard.isNotNull
 import me.carleslc.kotlin.extensions.standard.isNull
-import me.carleslc.kotlin.extensions.standard.letIf
-import me.carleslc.kotlin.extensions.standard.println
 import me.carleslc.kotlin.extensions.strings.isNotNullOrBlank
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
@@ -32,8 +22,6 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RestController
 import java.time.DayOfWeek
-import java.time.ZoneId
-import java.time.format.TextStyle
 import javax.servlet.http.HttpServletRequest
 import javax.servlet.http.HttpServletResponse
 
@@ -102,6 +90,16 @@ class RootController(private val clockService: ClockService,
                     .replace("\$temperature", temperature.toString())
                     .replace("\$description", description)
         }
+    }
+
+    fun Bot.greetings() {
+        addMessage(S.GREETINGS)
+        if (!containsToken(TRELLO)) {
+            loginMessage(S.GREETINGS_LOGIN, TRELLO)
+        } else {
+            addMessage(S.GREETINGS_LOGGED)
+        }
+        send()
     }
 
     fun Bot.clock() {
@@ -201,7 +199,7 @@ class RootController(private val clockService: ClockService,
                         isEmpty() -> S.EMPTY_TODO
                         size == 1 -> S.TODO_SINGLE
                         count { it.status == DOING } > 1 -> S.MULTITASKING
-                        else -> S.FOCUS_TODO
+                        else -> S.TODO_FOCUS
                     }
                 }
                 else -> { /* SOMEDAY, fallback to default answer */ }
@@ -224,6 +222,7 @@ class RootController(private val clockService: ClockService,
             "calculator.multiplication" to { b -> b.multiply() },
             "calculator.division" to { b -> b.divide() },
             "weather" to { b -> b.weather() },
+            "greetings" to { b -> b.greetings() },
             "time.get" to { b -> b.clock() },
             "date.get" to { b -> b.calendar() },
             "date.period" to { b -> b.calendarPeriod() },

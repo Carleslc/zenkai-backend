@@ -69,16 +69,6 @@ data class Bot(val language: String,
         }
     }
 
-    fun addMessage(s: String) = addMessage(s, s)
-
-    fun addMessages(s: String) {
-        s.split('\n').forEach { addMessage(it) }
-    }
-
-    fun addSpeech(speech: String) = addMessage(textToSpeech = speech)
-
-    fun addText(text: String) = addMessage(displayText = text)
-
     fun addMessage(textToSpeech: String? = null, displayText: String? = null): Boolean {
         if (textToSpeech.isNotNullOrBlank() || displayText.isNotNullOrBlank()) {
             messages.add(SimpleResponse(textToSpeech = textToSpeech.nullIfBlank(), displayText = displayText.nullIfBlank()))
@@ -86,6 +76,20 @@ data class Bot(val language: String,
         }
         return false
     }
+
+    fun addSpeech(speech: String) = addMessage(textToSpeech = speech)
+
+    fun addText(text: String) = addMessage(displayText = text)
+
+    fun addMessage(id: S) = addMessage(get(id))
+
+    fun addMessage(s: String) = addMessage(s, s)
+
+    fun addMessages(s: String) {
+        s.split('\n').forEach { addMessage(it) }
+    }
+
+    fun addMessages(id: S) = addMessages(get(id))
 
     fun addTask(task: Task) {
         with(task) {
@@ -101,6 +105,8 @@ data class Bot(val language: String,
         block(TrelloTaskService(it, language, this))
     }
 
+    fun containsToken(type: TokenType) = tokens[type] != null
+
     private fun requireToken(type: TokenType, block: (String) -> Unit) {
         val token = tokens[type]
         lastRequiredToken = type
@@ -112,13 +118,16 @@ data class Bot(val language: String,
     }
 
     private fun needsLogin() {
-        val type = lastRequiredToken!!
-        error = LoginError(type)
-        val messages = get(S.LOGIN_TOKEN).replace("\$type", type.toString()).split('\n')
+        loginMessage(S.LOGIN_TOKEN, lastRequiredToken!!)
+        send()
+    }
+
+    fun loginMessage(id: S, type: TokenType) {
+        val messages = get(id).replace("\$type", type.toString()).split('\n')
         addMessage(messages[0])
         addText(type.authUrl)
         addMessage(messages[1])
-        send()
+        error = LoginError(type)
     }
 
     fun send(ask: Boolean = false) = action.fillAndSend(messages.firstOrNull()?.textToSpeech,
@@ -126,7 +135,7 @@ data class Bot(val language: String,
                     "messages" to messages,
                     "language" to language,
                     "timezone" to timezone.id,
-                    "tokens" to tokens.map { Token(it.key.name, it.value) })
+                    "tokens" to tokens.map { Token(it.key, it.value) })
                     .apply { if (error != null) this["error"] = error }, ask)
 
     fun getParam(param: String): Any? = action.getArgument(param)
@@ -190,7 +199,7 @@ data class Bot(val language: String,
 
     override fun onNewBoard(board: Board) {
         addMessage(get(S.NEW_BOARD))
-        addText(board.shortUrl)
+        addText(board.shortUrl!!)
     }
 
     companion object Parser {
@@ -218,7 +227,7 @@ data class Bot(val language: String,
                     logger.info("Time Zone $timezone")
                     val tokens = mutableMapOf<TokenType, String>()
                     fillContextTokens(action, tokens)
-                    fillDataTokens(data?.tokens, tokens)
+                    fillDataTokens(data?.tokens, tokens, language)
                     tokens.forEach { action.fillParameter(it.key.param, it.value) }
                     logger.info("Tokens $tokens")
                     bot = Bot(language, timezone, action, tokens, calendarService)
@@ -249,10 +258,10 @@ data class Bot(val language: String,
             }
         }
 
-        private fun fillDataTokens(dataTokens: List<Token>?, tokens: MutableMap<TokenType, String>) {
+        private fun fillDataTokens(dataTokens: List<Token>?, tokens: MutableMap<TokenType, String>, language: String) {
             dataTokens?.forEach {
                 if (it.token.isNotNullOrBlank() && it.type != null) {
-                    val tokenType = TokenType.valueOf(it.type)
+                    val tokenType = TokenType.valueOf(it.type.toUpperCase(language.toLocale()))
                     tokens.putIfAbsent(tokenType, it.token!!)
                 }
             }
@@ -332,5 +341,3 @@ private fun DialogflowApp.fillAndSend(speech: String?, data: Map<String, Any>, a
 }
 
 private data class ZenkaiRequestData(val timezone: String?, val tokens: List<Token>?)
-
-private data class Token(val type: String?, val token: String?)
