@@ -36,6 +36,10 @@ open class Trello(private val applicationKey: String, private val userToken: Str
         return attachService(post(getUrl(LISTS, richParams), TrelloList::class, richParams.withId(boardId).withKeyToken()))
     }
 
+    final override fun getLists(boardId: String, params: Parameters): List<TrelloList> {
+        return attachService(getList(getUrl(LISTS, params), TrelloList::class, params.withId(boardId).withKeyToken()))
+    }
+
     final override fun enablePowerUp(boardId: String, powerUpId: String, params: Parameters): Boolean {
         val richParams = params.add("idPlugin" to powerUpId)
         return post(getUrl(POWER_UP, richParams), richParams.withId(boardId).withKeyToken()).isOk()

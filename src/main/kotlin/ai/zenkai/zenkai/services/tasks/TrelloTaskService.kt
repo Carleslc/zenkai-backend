@@ -4,18 +4,17 @@ import ai.zenkai.zenkai.config.TRELLO_API_KEY
 import ai.zenkai.zenkai.i18n.DEFAULT_LANGUAGE
 import ai.zenkai.zenkai.i18n.S
 import ai.zenkai.zenkai.i18n.i18n
-import ai.zenkai.zenkai.model.Bot
+import ai.zenkai.zenkai.i18n.toLocale
 import ai.zenkai.zenkai.model.Task
 import ai.zenkai.zenkai.model.TaskStatus
 import ai.zenkai.zenkai.services.parameters
-import ai.zenkai.zenkai.services.tasks.trello.Board
-import ai.zenkai.zenkai.services.tasks.trello.Member
-import ai.zenkai.zenkai.services.tasks.trello.PowerUp
-import ai.zenkai.zenkai.services.tasks.trello.Trello
+import ai.zenkai.zenkai.services.tasks.trello.*
+import org.slf4j.LoggerFactory
 
 class TrelloTaskService(private val accessToken: String,
-                        private val language: String,
                         private val tasksListener: TasksListener) : TaskService {
+
+    private val logger = LoggerFactory.getLogger(javaClass)
 
     private val trello by lazy { Trello(TRELLO_API_KEY, accessToken) }
 
@@ -25,9 +24,26 @@ class TrelloTaskService(private val accessToken: String,
 
     private val board by lazy { findDefaultBoard() }
 
+    private lateinit var language: String
+
     /** Sorted tasks (closer deadline first, in other case prevails Trello board list order) **/
     override fun Board.getTasks(status: TaskStatus): List<Task> {
-        return listOf()
+        val locale = language.toLocale()
+        val listNames = status.getReadableListNamesLower(locale)
+        val selectedLists = board.getLists(parameters(
+                "filter" to "open",
+                "fields" to "name",
+                "cards" to "open",
+                "card_fields" to "name,desc,due,labels,shortUrl"
+        )).filter { it.name!!.toLowerCase(locale) in listNames }
+        logger.info("Selected lists: $selectedLists")
+        val tasks = mutableListOf<Task>()
+        selectedLists.forEach {
+            val listStatus = listNames[it.name!!.toLowerCase(locale)]!!
+            tasks.addAll(it.cards!!.map { it.toTask(listStatus) })
+        }
+        logger.info("Tasks: $tasks")
+        return tasks
     }
 
     fun getDefaultBoard() = board
@@ -35,22 +51,27 @@ class TrelloTaskService(private val accessToken: String,
     fun getMe() = member
 
     private fun retrieveMe(): Member {
-        return trello.getMe(parameters(
+        val me = trello.getMe(parameters(
+                "fields" to "username,email,prefs",
                 "boards" to "open,member",
-                "board_lists" to "open",
                 "board_fields" to "name,shortUrl"))
+        language = me.getLocale()!!.language
+        if (language !in i18n) {
+            logger.info("Language $language not supported, default to $DEFAULT_LANGUAGE")
+            language = DEFAULT_LANGUAGE
+        }
+        return me
     }
 
     private fun findDefaultBoard(): Board {
         val zenkaiBoard = member.boards!!.find { it.name == defaultBoardName }
-        Bot.logger.info("Zenkai Board: $zenkaiBoard")
+        logger.info("Zenkai Board: $zenkaiBoard")
         return zenkaiBoard ?: newDefaultBoard()
     }
 
     private fun newDefaultBoard(): Board {
-        val language = member.getLanguage()
-        Bot.logger.info("Creating new board with language $language for ${member.username} with email ${member.email}")
-        val trelloLocaleIsSupported = language in i18n
+        logger.info("Creating new board with language $language for ${member.username} with email ${member.email}")
+        val trelloLocaleIsSupported = member.getLocale()!!.language in i18n
         val board = trello.newBoard(defaultBoardName, parameters(
                 "defaultLists" to "$trelloLocaleIsSupported",
                 "powerUps" to "cardAging",
@@ -58,7 +79,6 @@ class TrelloTaskService(private val accessToken: String,
                 "desc" to i18n[S.DEFAULT_BOARD_DESCRIPTION, language]))
         board.enablePowerUp(PowerUp.CARD_AGING.id)
         if (!trelloLocaleIsSupported) {
-            Bot.logger.info("Language $language not supported, default to $DEFAULT_LANGUAGE")
             val bottom = parameters("pos" to "bottom")
             board.newList(i18n[S.TODO, DEFAULT_LANGUAGE], bottom)
             board.newList(i18n[S.DOING, DEFAULT_LANGUAGE], bottom)
@@ -68,6 +88,6 @@ class TrelloTaskService(private val accessToken: String,
         return board
     }
 
-    private fun Member.getLanguage() = getLocale().language
-
 }
+
+private fun Card.toTask(status: TaskStatus) = Task(name!!, desc!!, status, due, listOf())

@@ -21,6 +21,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.tmsdurham.actions.DialogflowApp
 import com.tmsdurham.actions.SimpleResponse
+import com.tmsdurham.dialogflow.Context
 import main.java.com.tmsdurham.dialogflow.sample.DialogflowAction
 import me.carleslc.kotlin.extensions.standard.isNull
 import me.carleslc.kotlin.extensions.standard.letIf
@@ -29,7 +30,6 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.web.client.HttpClientErrorException
-import wu.seal.jvm.kotlinreflecttools.changePropertyValue
 import java.time.LocalDate
 import java.time.ZoneId
 import javax.servlet.http.HttpServletRequest
@@ -42,13 +42,13 @@ const val USER_CONTEXT: String = "user-logged-in"
 data class Bot(val language: String,
                val timezone: ZoneId,
                private val action: DialogflowApp,
-               private val tokens: Map<TokenType, String>,
+               private val tokens: MutableMap<TokenType, String>,
                private val calendarService: CalendarService,
                private var error: BotError? = null) : TasksListener {
 
     private val messages by lazy { mutableListOf<SimpleResponse>() }
 
-    val query by lazy { action.request.body.result.resolvedQuery }
+    val query get() = action.query
 
     val accessToken by lazy { action.request.body.originalRequest?.data?.user?.accessToken }
 
@@ -102,7 +102,7 @@ data class Bot(val language: String,
     }
 
     fun withTrello(block: TrelloTaskService.() -> Unit) = requireToken(TokenType.TRELLO) {
-        block(TrelloTaskService(it, language, this))
+        block(TrelloTaskService(it, this))
     }
 
     fun containsToken(type: TokenType) = tokens[type] != null
@@ -128,6 +128,8 @@ data class Bot(val language: String,
         addText(type.authUrl)
         addMessage(messages[1])
         error = LoginError(type)
+        tokens[type] = ""
+        action.fillUserTokens(tokens)
     }
 
     fun send(ask: Boolean = false) = action.fillAndSend(messages.firstOrNull()?.textToSpeech,
@@ -226,9 +228,9 @@ data class Bot(val language: String,
                     }.getOrElse { DEFAULT_TIME_ZONE }
                     logger.info("Time Zone $timezone")
                     val tokens = mutableMapOf<TokenType, String>()
-                    fillContextTokens(action, tokens)
+                    fillContextTokens(action.request.body.result.resolvedQuery, action, tokens)
                     fillDataTokens(data?.tokens, tokens, language)
-                    tokens.forEach { action.fillParameter(it.key.param, it.value) }
+                    action.fillUserTokens(tokens)
                     logger.info("Tokens $tokens")
                     bot = Bot(language, timezone, action, tokens, calendarService)
                     handler(bot)
@@ -244,12 +246,17 @@ data class Bot(val language: String,
             }
         }
 
-        private fun fillContextTokens(action: DialogflowApp, tokens: MutableMap<TokenType, String>) {
+        private fun fillContextTokens(query: String, action: DialogflowApp, tokens: MutableMap<TokenType, String>) {
             TokenType.values().forEach {
                 if (it !in tokens) {
-                    var token = action.getArgument(it.param)?.toString().orEmpty()
-                    if (token.isBlank()) {
-                        token = action.getContextArgument(USER_CONTEXT, it.param)?.value?.toString().orEmpty()
+                    var token: String
+                    if (query.matches(it.regex)) {
+                        token = query
+                    } else {
+                        token = action.getArgument(it.param)?.toString().orEmpty()
+                        if (token.isBlank()) {
+                            token = action.getContextArgument(USER_CONTEXT, it.param)?.value?.toString().orEmpty()
+                        }
                     }
                     if (token.isNotBlank()) {
                         tokens[it] = token
@@ -264,6 +271,14 @@ data class Bot(val language: String,
                     val tokenType = TokenType.valueOf(it.type.toUpperCase(language.toLocale()))
                     tokens.putIfAbsent(tokenType, it.token!!)
                 }
+            }
+        }
+
+        private fun DialogflowApp.fillUserTokens(tokens: Map<TokenType, String>) {
+            if (!tokens.isEmpty()) {
+                val contextTokens = TokenType.values().map { it.param to (tokens[it] ?: "") as Any }.toMap().toMutableMap()
+                setContext(USER_CONTEXT, 100, contextTokens)
+                logger.info("Filled User Tokens")
             }
         }
 
@@ -305,12 +320,7 @@ val HttpServletRequest.body get() = inputStream.reader().readText()
 
 val DialogflowApp.source get() = request.body.originalRequest?.source ?: request.body.result.source ?: "zenkai"
 
-fun DialogflowApp.fillParameter(param: String, value: String) = with(request.body.result) {
-    if (parameters.isNull()) {
-        changePropertyValue("parameters", mutableMapOf<String, Any>())
-    }
-    parameters!![param] = value
-}
+val DialogflowApp.query get() = request.body.result.resolvedQuery
 
 private val logger get() = Bot.logger
 

@@ -23,6 +23,8 @@ interface TrelloService : Service {
 
     fun newList(boardId: String, name: String, params: Parameters = parameters()): TrelloList
 
+    fun getLists(boardId: String, params: Parameters): List<TrelloList>
+
     fun enablePowerUp(boardId: String, powerUpId: String, params: Parameters = parameters()): Boolean
 
 }

@@ -7,9 +7,9 @@ import java.time.LocalDateTime
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class Board(val id: String,
-                 val name: String,
+                 val name: String?,
                  val desc: String?,
-                 val closed: Boolean,
+                 val closed: Boolean?,
                  val idOrganization: String?,
                  val pinned: Boolean?,
                  val shortLink: String?,
@@ -22,9 +22,16 @@ data class Board(val id: String,
                  val subscribed: Boolean?,
                  val dateLastView: LocalDateTime?,
                  val shortUrl: String?,
-                 val lists: List<TrelloList>?) : TrelloEntity() {
+                 var lists: List<TrelloList>?) : TrelloEntity() {
 
     fun newList(name: String, params: Parameters = parameters()) = service.newList(id, name, params)
+
+    fun getLists(params: Parameters = parameters(), override: Boolean = false): List<TrelloList> {
+        if (lists == null || override) {
+            lists = service.getLists(id, params)
+        }
+        return lists!!
+    }
 
     fun enablePowerUp(powerUpId: String) = service.enablePowerUp(id, powerUpId)
 
