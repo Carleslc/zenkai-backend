@@ -95,11 +95,10 @@ class RootController(private val clockService: ClockService,
     fun Bot.greetings() {
         addMessage(S.GREETINGS)
         if (!containsToken(TRELLO)) {
-            loginMessage(S.GREETINGS_LOGIN, TRELLO)
+            needsLogin(S.GREETINGS_LOGIN, TRELLO)
         } else {
-            addMessage(S.GREETINGS_LOGGED)
+            tell(S.GREETINGS_LOGGED)
         }
-        send()
     }
 
     fun Bot.clock() {
@@ -174,9 +173,7 @@ class RootController(private val clockService: ClockService,
     fun Bot.readTasks() = withTrello {
         val taskType = getString("task-type")
         logger.info("Task Type $taskType")
-        val status = if (taskType != null) {
-            TaskStatus.valueOf(taskType.toString())
-        } else TaskStatus.default()
+        val status = TaskStatus.parse(taskType)
         with (getDefaultBoard().getTasks(status)) {
             var initialMessageId: S? = null
             when (status) {
@@ -216,6 +213,17 @@ class RootController(private val clockService: ClockService,
         }
     }
 
+    fun Bot.addTask() = withTrello {
+        val title = getString("task-title")
+        if (title != null) {
+            logger.info("Task Title $title")
+            val taskType = getString("task-type")
+            logger.info("Task Type $taskType")
+            val status = TaskStatus.parse(taskType)
+            tell("Added $title to list $status")
+        }
+    }
+
     val actionMap: Map<String, Handler> = mapOf(
             "calculator.sum" to { b -> b.sum() },
             "calculator.substraction" to { b -> b.substract() },
@@ -225,8 +233,9 @@ class RootController(private val clockService: ClockService,
             "greetings" to { b -> b.greetings() },
             "time.get" to { b -> b.clock() },
             "date.get" to { b -> b.calendar() },
-            "date.period" to { b -> b.calendarPeriod() },
-            "tasks.read" to { b -> b.readTasks() }
+            "date.get.period" to { b -> b.calendarPeriod() },
+            "tasks.read" to { b -> b.readTasks() },
+            "tasks.add" to { b -> b.addTask() }
     )
 
 }

@@ -22,6 +22,8 @@ enum class TaskStatus(private val idNameList: S) {
 
     companion object {
         fun default() = TODO
+
+        fun parse(taskType: String?) = if (taskType != null) valueOf(taskType.toString()) else default()
     }
 
 }

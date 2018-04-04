@@ -21,7 +21,6 @@ import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.tmsdurham.actions.DialogflowApp
 import com.tmsdurham.actions.SimpleResponse
-import com.tmsdurham.dialogflow.Context
 import main.java.com.tmsdurham.dialogflow.sample.DialogflowAction
 import me.carleslc.kotlin.extensions.standard.isNull
 import me.carleslc.kotlin.extensions.standard.letIf
@@ -117,12 +116,7 @@ data class Bot(val language: String,
         }
     }
 
-    private fun needsLogin() {
-        loginMessage(S.LOGIN_TOKEN, lastRequiredToken!!)
-        send()
-    }
-
-    fun loginMessage(id: S, type: TokenType) {
+    fun needsLogin(id: S = S.LOGIN_TOKEN, type: TokenType = lastRequiredToken!!) {
         val messages = get(id).replace("\$type", type.toString()).split('\n')
         addMessage(messages[0])
         addText(type.authUrl)
@@ -130,15 +124,22 @@ data class Bot(val language: String,
         error = LoginError(type)
         tokens[type] = ""
         action.fillUserTokens(tokens)
+        send()
     }
 
-    fun send(ask: Boolean = false) = action.fillAndSend(messages.firstOrNull()?.textToSpeech,
-            mutableMapOf("source" to action.source,
-                    "messages" to messages,
-                    "language" to language,
-                    "timezone" to timezone.id,
-                    "tokens" to tokens.map { Token(it.key, it.value) })
-                    .apply { if (error != null) this["error"] = error }, ask)
+    fun send(ask: Boolean = false) {
+        if (error == null) {
+            // TODO: Redirect with followupEvent instead clearing slot filling contexts
+            action.completeTokensFilling(tokens)
+        }
+        action.fillAndSend(messages.firstOrNull()?.textToSpeech,
+                mutableMapOf("source" to action.source,
+                        "messages" to messages,
+                        "language" to language,
+                        "timezone" to timezone.id,
+                        "tokens" to tokens.map { Token(it.key, it.value) })
+                        .apply { if (error != null) this["error"] = error }, ask)
+    }
 
     fun getParam(param: String): Any? = action.getArgument(param)
 
@@ -276,9 +277,27 @@ data class Bot(val language: String,
 
         private fun DialogflowApp.fillUserTokens(tokens: Map<TokenType, String>) {
             if (!tokens.isEmpty()) {
-                val contextTokens = TokenType.values().map { it.param to (tokens[it] ?: "") as Any }.toMap().toMutableMap()
+                val contextTokens = mutableMapOf<String, Any>()
+                TokenType.values().forEach { contextTokens[it.param] = tokens[it] ?: "" }
                 setContext(USER_CONTEXT, 100, contextTokens)
                 logger.info("Filled User Tokens")
+            }
+        }
+
+        private fun DialogflowApp.completeTokensFilling(tokens: Map<TokenType, String>) {
+            with (request.body.result) {
+                if (actionIncomplete) {
+                    TokenType.values().forEach {
+                        if ((tokens[it] ?: "").isNotBlank()) {
+                            val intentContext = (metadata?.intentName ?: action).replace('.', '_')
+                            setContext("${intentContext}_dialog_context", 0)
+                            setContext("${intentContext}_dialog_params_${it.param}", 0)
+                            metadata?.intentId?.let {
+                                setContext("${it}_id_dialog_context", 0)
+                            }
+                        }
+                    }
+                }
             }
         }
 

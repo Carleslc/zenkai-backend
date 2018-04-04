@@ -20,11 +20,11 @@ class TrelloTaskService(private val accessToken: String,
 
     private val defaultBoardName by lazy { i18n[S.DEFAULT_BOARD_NAME, language] }
 
-    private val member by lazy { retrieveMe() }
-
     private val board by lazy { findDefaultBoard() }
 
     private lateinit var language: String
+
+    private val member: Member = retrieveMe()
 
     /** Sorted tasks (closer deadline first, in other case prevails Trello board list order) **/
     override fun Board.getTasks(status: TaskStatus): List<Task> {
