@@ -3,7 +3,7 @@ package ai.zenkai.zenkai.services.tasks.trello
 import ai.zenkai.zenkai.services.Parameters
 import ai.zenkai.zenkai.services.parameters
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import java.time.LocalDateTime
+import java.time.ZonedDateTime
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class Board(val id: String,
@@ -14,13 +14,13 @@ data class Board(val id: String,
                  val pinned: Boolean?,
                  val shortLink: String?,
                  val powerUps: List<String>?,
-                 val dateLastActivity: LocalDateTime?,
+                 val dateLastActivity: ZonedDateTime?,
                  val idTags: List<String>?,
                  val invited: Boolean?,
                  val starred: Boolean?,
                  val url: String?,
                  val subscribed: Boolean?,
-                 val dateLastView: LocalDateTime?,
+                 val dateLastView: ZonedDateTime?,
                  val shortUrl: String?,
                  var lists: List<TrelloList>?) : TrelloEntity() {
 

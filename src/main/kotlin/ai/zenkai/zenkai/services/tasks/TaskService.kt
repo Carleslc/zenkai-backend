@@ -9,4 +9,6 @@ interface TaskService : Service {
 
     fun Board.getTasks(status: TaskStatus): List<Task>
 
+    fun Board.addTask(task: Task): Task
+
 }

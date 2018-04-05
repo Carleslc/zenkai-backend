@@ -1,18 +1,20 @@
 package ai.zenkai.zenkai.services.tasks
 
+import ai.zenkai.zenkai.add
 import ai.zenkai.zenkai.config.TRELLO_API_KEY
 import ai.zenkai.zenkai.i18n.DEFAULT_LANGUAGE
 import ai.zenkai.zenkai.i18n.S
 import ai.zenkai.zenkai.i18n.i18n
-import ai.zenkai.zenkai.i18n.toLocale
 import ai.zenkai.zenkai.model.Task
 import ai.zenkai.zenkai.model.TaskStatus
 import ai.zenkai.zenkai.services.parameters
 import ai.zenkai.zenkai.services.tasks.trello.*
 import org.slf4j.LoggerFactory
+import java.time.ZoneId
 
 class TrelloTaskService(private val accessToken: String,
-                        private val tasksListener: TasksListener) : TaskService {
+                        private val tasksListener: TasksListener,
+                        private val zoneId: ZoneId) : TaskService {
 
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -28,27 +30,39 @@ class TrelloTaskService(private val accessToken: String,
 
     /** Sorted tasks (closer deadline first, in other case prevails Trello board list order) **/
     override fun Board.getTasks(status: TaskStatus): List<Task> {
-        val locale = language.toLocale()
-        val listNames = status.getReadableListNamesLower(locale)
-        val selectedLists = board.getLists(parameters(
-                "filter" to "open",
-                "fields" to "name",
-                "cards" to "open",
-                "card_fields" to "name,desc,due,labels,shortUrl"
-        )).filter { it.name!!.toLowerCase(locale) in listNames }
-        logger.info("Selected lists: $selectedLists")
+        val (selectedLists, listNames) = board.getLists(listsWithCards()).filterReadable(status)
         val tasks = mutableListOf<Task>()
         selectedLists.forEach {
-            val listStatus = listNames[it.name!!.toLowerCase(locale)]!!
+            val listStatus = listNames[it.name!!]!!
             tasks.addAll(it.cards!!.map { it.toTask(listStatus) })
         }
-        logger.info("Tasks: $tasks")
         return tasks
+    }
+
+    override fun Board.addTask(task: Task): Task {
+        val statusList = board.getLists(openListsWithName()).withStatus(task.status)
+        val card = statusList.newCard(task.title, task.deadline?.atZone(zoneId), parameters("desc" to task.description, "pos" to "top"))
+        return card.toTask(task.status)
     }
 
     fun getDefaultBoard() = board
 
     fun getMe() = member
+
+    private fun List<TrelloList>.filterReadable(limit: TaskStatus): Pair<List<TrelloList>, Map<String, TaskStatus>> {
+        val readableLists = limit.getReadableListNamesLower(language)
+        return filter { it.name!! in readableLists } to readableLists
+    }
+
+    private fun List<TrelloList>.withStatus(status: TaskStatus): TrelloList {
+        val statusListName = status.getListName(language)
+        return firstOrNull { it.name!! == statusListName }
+                ?: board.newList(i18n[status.idNameList, language], parameters("pos" to "bottom"))
+    }
+
+    private fun Board.openListsWithName() = parameters("filter" to "open", "fields" to "name")
+
+    private fun Board.listsWithCards() = openListsWithName().add("cards" to "open", "card_fields" to "name,desc,due,labels,shortUrl")
 
     private fun retrieveMe(): Member {
         val me = trello.getMe(parameters(
@@ -88,6 +102,6 @@ class TrelloTaskService(private val accessToken: String,
         return board
     }
 
-}
+    private fun Card.toTask(status: TaskStatus) = Task(name!!, desc!!, status, due?.toLocalDateTime(), shortUrl)
 
-private fun Card.toTask(status: TaskStatus) = Task(name!!, desc!!, status, due, listOf())
+}

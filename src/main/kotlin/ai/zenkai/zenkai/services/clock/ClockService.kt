@@ -21,6 +21,8 @@ class ClockService {
 
     fun now(timezone: ZoneId): LocalTime = LocalTime.now(timezone)
 
+    fun parse(time: String): LocalTime = LocalTime.parse(time)
+
     fun format(time: LocalTime, locale: Locale) = pretty12(time, locale)
     fun format(time: LocalTime, language: String) = format(time, language.toLocale())
 

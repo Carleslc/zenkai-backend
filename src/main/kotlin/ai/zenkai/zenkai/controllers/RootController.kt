@@ -15,6 +15,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
 import me.carleslc.kotlin.extensions.html.h
 import me.carleslc.kotlin.extensions.standard.isNull
+import me.carleslc.kotlin.extensions.standard.println
 import me.carleslc.kotlin.extensions.strings.isNotNullOrBlank
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
@@ -41,7 +42,7 @@ class RootController(private val clockService: ClockService,
     @PostMapping("/")
     fun intentMapper(req: HttpServletRequest, res: HttpServletResponse) {
         try {
-            Bot.handleRequest(CachedHttpServletRequest(req), res, gson, actionMap, calendarService)
+            Bot.handleRequest(CachedHttpServletRequest(req), res, gson, actionMap, calendarService, clockService)
         } catch (e: Exception) {
             e.multicatch(IllegalStateException::class, JsonSyntaxException::class) {
                 badRequest(e, gson, res)
@@ -216,11 +217,15 @@ class RootController(private val clockService: ClockService,
     fun Bot.addTask() = withTrello {
         val title = getString("task-title")
         if (title != null) {
-            logger.info("Task Title $title")
             val taskType = getString("task-type")
-            logger.info("Task Type $taskType")
+            val deadline = getDateTime("date", "time")
             val status = TaskStatus.parse(taskType)
-            tell("Added $title to list $status")
+            val description = query
+            val task = getDefaultBoard().addTask(Task(title.capitalize(), description, status, deadline))
+            addMessage(get(S.ADDED_TASK).replace("\$type", status.getListName(language)))
+            addMessage(S.YOUR_TASK)
+            addTask(task)
+            send()
         }
     }
 

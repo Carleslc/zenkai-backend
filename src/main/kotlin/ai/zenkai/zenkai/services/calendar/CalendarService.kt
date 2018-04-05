@@ -5,11 +5,10 @@ import ai.zenkai.zenkai.i18n.S
 import ai.zenkai.zenkai.i18n.i18n
 import ai.zenkai.zenkai.i18n.toLocale
 import ai.zenkai.zenkai.services.clock.ClockService
+import ai.zenkai.zenkai.services.clock.DEFAULT_TIME_ZONE
 import ai.zenkai.zenkai.words
-import me.carleslc.kotlin.extensions.standard.println
 import me.carleslc.kotlin.extensions.time.toDate
 import org.ocpsoft.prettytime.PrettyTime
-import org.ocpsoft.prettytime.nlp.PrettyTimeParser
 import org.springframework.stereotype.Service
 import java.time.*
 import java.time.format.DateTimeFormatter
@@ -20,7 +19,6 @@ import java.util.*
 class CalendarService(private val clockService: ClockService) {
 
     private val prettyTimeFormatter by lazy { PrettyTime() }
-    private val prettyTimeParser by lazy { PrettyTimeParser() }
     private val dialogFlowDateFormatter by lazy { DateTimeFormatter.ofPattern("yyyy-MM-dd") }
 
     private val daysOfWeek by lazy { i18n.map { it to getDaysOfWeek(it) }.toMap() }
@@ -35,15 +33,20 @@ class CalendarService(private val clockService: ClockService) {
     fun formatDate(date: LocalDate): String = dialogFlowDateFormatter.format(date)
 
     fun prettyApproxDateTime(date: LocalDateTime, zoneId: ZoneId, language: String): String {
-        return "${prettyApprox(date, zoneId, language)} (${prettyDateTime(date, language)})"
+        val offsetDate = date.atOffset(ZoneOffset.UTC).atZoneSameInstant(zoneId)
+        return "${prettyApprox(offsetDate, language)} (${prettyDateTime(offsetDate.toLocalDateTime(), zoneId, language)})"
     }
 
-    fun prettyDateTime(date: LocalDateTime, language: String): String {
+    fun prettyDateTime(date: LocalDateTime, zoneId: ZoneId, language: String): String {
         return "${prettyDate(date.toLocalDate(), language)}, ${clockService.pretty24(date.toLocalTime(), language)}"
     }
 
+    private fun prettyApprox(date: ZonedDateTime, language: String): String {
+        return prettyTime(language).format(Date(date.toInstant().toEpochMilli()))
+    }
+
     fun prettyApprox(date: LocalDateTime, zoneId: ZoneId, language: String): String {
-        return prettyTime(language).format(date.toDate(zoneId))
+        return prettyApprox(date.atOffset(ZoneOffset.UTC).atZoneSameInstant(zoneId), language)
     }
 
     fun prettyDate(date: LocalDate, language: String) : String {

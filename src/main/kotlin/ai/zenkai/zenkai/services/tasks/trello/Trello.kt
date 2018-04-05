@@ -5,6 +5,8 @@ import ai.zenkai.zenkai.services.Parameters
 import ai.zenkai.zenkai.services.RestTemplateHttpClient
 import ai.zenkai.zenkai.services.parameters
 import ai.zenkai.zenkai.services.tasks.trello.TrelloEndpoint.*
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 
 open class Trello(private val applicationKey: String, private val userToken: String) : TrelloService, RestTemplateHttpClient() {
 
@@ -44,6 +46,13 @@ open class Trello(private val applicationKey: String, private val userToken: Str
         val richParams = params.add("idPlugin" to powerUpId)
         return post(getUrl(POWER_UP, richParams), richParams.withId(boardId).withKeyToken()).isOk()
     }
+
+    final override fun newCard(listId: String, name: String, due: ZonedDateTime?, params: Parameters): Card {
+        val richParams = params.add("idList" to listId, "name" to name, "due" to format(due))
+        return post(getUrl(CARDS, richParams), Card::class, richParams.withKeyToken())
+    }
+
+    private fun format(dateTime: ZonedDateTime?) = dateTime?.let { DateTimeFormatter.ISO_INSTANT.format(it) }.orEmpty()
 
     protected fun <E: TrelloEntity> attachService(entity: E): E = entity.apply { attachService(this@Trello) }
 

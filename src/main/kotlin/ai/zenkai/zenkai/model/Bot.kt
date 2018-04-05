@@ -10,6 +10,7 @@ import ai.zenkai.zenkai.i18n.toLocale
 import ai.zenkai.zenkai.nullIfBlank
 import ai.zenkai.zenkai.services.calendar.CalendarService
 import ai.zenkai.zenkai.services.calendar.DatePeriod
+import ai.zenkai.zenkai.services.clock.ClockService
 import ai.zenkai.zenkai.services.clock.DEFAULT_TIME_ZONE
 import ai.zenkai.zenkai.services.clock.toZoneIdOrThrow
 import ai.zenkai.zenkai.services.tasks.TasksListener
@@ -29,8 +30,7 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.web.client.HttpClientErrorException
-import java.time.LocalDate
-import java.time.ZoneId
+import java.time.*
 import javax.servlet.http.HttpServletRequest
 import javax.servlet.http.HttpServletResponse
 
@@ -43,13 +43,12 @@ data class Bot(val language: String,
                private val action: DialogflowApp,
                private val tokens: MutableMap<TokenType, String>,
                private val calendarService: CalendarService,
+               private val clockService: ClockService,
                private var error: BotError? = null) : TasksListener {
 
     private val messages by lazy { mutableListOf<SimpleResponse>() }
 
     val query get() = action.query
-
-    val accessToken by lazy { action.request.body.originalRequest?.data?.user?.accessToken }
 
     val locale by lazy { language.toLocale() }
 
@@ -101,7 +100,7 @@ data class Bot(val language: String,
     }
 
     fun withTrello(block: TrelloTaskService.() -> Unit) = requireToken(TokenType.TRELLO) {
-        block(TrelloTaskService(it, this))
+        block(TrelloTaskService(it, this, timezone))
     }
 
     fun containsToken(type: TokenType) = tokens[type] != null
@@ -169,31 +168,51 @@ data class Bot(val language: String,
 
     fun getDouble(param: String): Double = getString(param)?.toDouble() ?: 0.toDouble()
 
-    fun getDateOrNullWithContext(param: String, context: String = USER_CONTEXT): LocalDate? {
-        return getStringWithContext(param, context).orEmpty()
-                .letIf(String::isNotEmpty, { calendarService.parse(it) }, { null })
-    }
-
-    fun getDateOrNull(param: String): LocalDate? = getString(param).orEmpty()
+    private fun String?.parseDate(): LocalDate? = orEmpty()
             .letIf(String::isNotEmpty, { calendarService.parse(it) }, { null })
 
+    fun getDate(param: String): LocalDate? = getString(param).parseDate()
+
     fun getDateWithContext(param: String, context: String = USER_CONTEXT): LocalDate? {
-        return getDateOrNullWithContext(param, context)
+        return getStringWithContext(param, context).parseDate()
     }
 
-    fun getDate(param: String): LocalDate? = getDateOrNull(param)
+    private fun String?.parseTime(): LocalTime? = orEmpty()
+            .letIf(String::isNotEmpty, { clockService.parse(it) }, { null })
 
-    fun getDatePeriodWithContext(param: String, context: String = USER_CONTEXT): DatePeriod? {
-        return getStringWithContext(param, context)?.let { DatePeriod.parse(it, calendarService) }
+    fun getTime(param: String): LocalTime? = getString(param).parseTime()
+
+    fun getTimeWithContext(param: String, context: String = USER_CONTEXT): LocalTime? {
+        return getStringWithContext(param, context).parseTime()
     }
 
-    fun getDatePeriod(param: String): DatePeriod? {
-        val arg = getParam(param) ?: return null
+    private fun Pair<LocalDate?, LocalTime?>.parseDateTime(): LocalDateTime? {
+        val (date, time) = this
+        if (date == null && time == null) return null
+        return (date ?: calendarService.today(timezone)).atTime(time ?: LocalTime.MIDNIGHT.withSecond(0))
+    }
+
+    fun getDateTime(dateParam: String, timeParam: String): LocalDateTime? {
+        return (getDate(dateParam) to getTime(timeParam)).parseDateTime()
+    }
+
+    fun getDateTimeWithContext(dateParam: String, timeParam: String, context: String = USER_CONTEXT): LocalDateTime? {
+        return (getDateWithContext(dateParam, context) to getTimeWithContext(timeParam, context)).parseDateTime()
+    }
+
+    private fun Any?.parseDatePeriod(): DatePeriod? {
+        val arg = this ?: return null
         return if (arg is Map<*,*>) {
             val start = arg["startDate"]?.toString() ?: return null
             val end = arg["endDate"]?.toString() ?: return null
             DatePeriod(start, end, calendarService)
         } else DatePeriod.parse(arg.toString(), calendarService)
+    }
+
+    fun getDatePeriod(param: String): DatePeriod? = getParam(param).parseDatePeriod()
+
+    fun getDatePeriodWithContext(param: String, context: String = USER_CONTEXT): DatePeriod? {
+        return getStringWithContext(param, context).parseDatePeriod()
     }
 
     fun isOrWas(date: LocalDate) = get(if (date.isBefore(calendarService.today(timezone))) S.WAS else S.IS)
@@ -210,7 +229,7 @@ data class Bot(val language: String,
         val logger: Logger by lazy { LoggerFactory.getLogger(this::class.java) }
 
         fun handleRequest(req: HttpServletRequest, res: HttpServletResponse, gson: Gson,
-                          intentMapper: Map<String, Handler>, calendarService: CalendarService) {
+                          intentMapper: Map<String, Handler>, calendarService: CalendarService, clockService: ClockService) {
             val action = DialogflowAction(req, res, gson).app
             var bot: Bot? = null
             try {
@@ -233,7 +252,7 @@ data class Bot(val language: String,
                     fillDataTokens(data?.tokens, tokens, language)
                     action.fillUserTokens(tokens)
                     logger.info("Tokens $tokens")
-                    bot = Bot(language, timezone, action, tokens, calendarService)
+                    bot = Bot(language, timezone, action, tokens, calendarService, clockService)
                     handler(bot)
                 }
             } catch (e: IllegalAccessException) {

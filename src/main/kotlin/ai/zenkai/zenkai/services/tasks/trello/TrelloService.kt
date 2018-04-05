@@ -4,6 +4,7 @@ import ai.zenkai.zenkai.services.Parameters
 import ai.zenkai.zenkai.services.Service
 import ai.zenkai.zenkai.services.ServiceEntity
 import ai.zenkai.zenkai.services.parameters
+import java.time.ZonedDateTime
 
 typealias TrelloEntity = ServiceEntity<Trello>
 
@@ -23,7 +24,9 @@ interface TrelloService : Service {
 
     fun newList(boardId: String, name: String, params: Parameters = parameters()): TrelloList
 
-    fun getLists(boardId: String, params: Parameters): List<TrelloList>
+    fun getLists(boardId: String, params: Parameters = parameters()): List<TrelloList>
+
+    fun newCard(listId: String, name: String, due: ZonedDateTime? = null, params: Parameters = parameters()): Card
 
     fun enablePowerUp(boardId: String, powerUpId: String, params: Parameters = parameters()): Boolean
 
