@@ -175,7 +175,7 @@ class RootController(private val clockService: ClockService,
         val taskType = getString("task-type")
         logger.info("Task Type $taskType")
         val status = TaskStatus.parse(taskType)
-        with (getDefaultBoard().getTasks(status)) {
+        with (getDefaultBoard().getReadableTasks(status)) {
             var initialMessageId: S? = null
             when (status) {
                 DONE -> initialMessageId = when {
@@ -221,10 +221,42 @@ class RootController(private val clockService: ClockService,
             val deadline = getDateTime("date", "time")
             val status = TaskStatus.parse(taskType)
             val description = query
-            val task = getDefaultBoard().addTask(Task(title.capitalize(), description, status, deadline))
-            addMessage(get(S.ADDED_TASK).replace("\$type", status.getListName(language)))
+            var task = Task(title.capitalize(), description, status, deadline)
+            val messageId: S
+            val previousTasks = getDefaultBoard().getPreviousTasks(status)
+            val matchTask = previousTasks.find { it.isSimilar(task) }
+            if (matchTask != null) {
+                task = matchTask
+                messageId = if (matchTask.status == status) {
+                    S.ALREADY_ADDED
+                } else {
+                    getDefaultBoard().moveTask(task, status)
+                    S.MOVED_TASK
+                }
+            } else {
+                task = getDefaultBoard().addTask(task)
+                messageId = S.ADDED_TASK
+            }
+            addMessage(get(messageId).replace("\$type", status.getListName(language)))
             addMessage(S.YOUR_TASK)
             addTask(task)
+            send()
+        }
+    }
+
+    fun Bot.deleteTask() = withTrello {
+        val title = getString("task-title")
+        if (title != null) {
+            val previousTasks = getDefaultBoard().getPreviousTasks()
+            val task = previousTasks.find { it.hasSimilarTitle(title) }
+            if (task != null) {
+                getDefaultBoard().archiveTask(task)
+                addMessage(S.TASK_DELETED)
+                addMessage(S.YOUR_TASK)
+                addTask(task)
+            } else {
+                addMessage(S.TASK_NOT_FOUND)
+            }
             send()
         }
     }
@@ -240,7 +272,8 @@ class RootController(private val clockService: ClockService,
             "date.get" to { b -> b.calendar() },
             "date.get.period" to { b -> b.calendarPeriod() },
             "tasks.read" to { b -> b.readTasks() },
-            "tasks.add" to { b -> b.addTask() }
+            "tasks.add" to { b -> b.addTask() },
+            "tasks.delete" to { b -> b.deleteTask() }
     )
 
 }

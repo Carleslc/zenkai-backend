@@ -28,6 +28,14 @@ open class RestTemplateHttpClient {
         return HttpResponse(response.body, response.statusCodeValue)
     }
 
+    protected fun put(url: String, params: Parameters) {
+        REST.put(url, null, params)
+    }
+
+    protected fun delete(url: String, params: Parameters) {
+        REST.delete(url, params)
+    }
+
     private fun <T: Any> getArrayType(klass: KClass<T>) = object : ParameterizedTypeReference<Array<T>>(){
         override fun getType(): Type {
             return TypeFactory.defaultInstance().constructArrayType(klass.java)

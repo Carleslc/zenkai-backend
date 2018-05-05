@@ -16,6 +16,10 @@ data class TrelloList(val id: String,
 
     fun newCard(name: String, due: ZonedDateTime? = null, params: Parameters = parameters()) = service.newCard(id, name, due, params)
 
+    fun moveCard(cardId: String) {
+        service.moveCard(cardId, id)
+    }
+
     override fun attachService(service: Trello) {
         super.attachService(service)
         cards?.forEach { it.attachService(service) }

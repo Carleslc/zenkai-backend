@@ -28,15 +28,26 @@ class TrelloTaskService(private val accessToken: String,
 
     private val member: Member = retrieveMe()
 
+    private val statusLists = mutableMapOf<TaskStatus, TrelloList>()
+
+    override fun Board.getReadableTasks(status: TaskStatus): List<Task> {
+        return getTasks(status.getReadableListNames(language), Task.priorityComparator())
+    }
+
+    override fun Board.getPreviousTasks(status: TaskStatus): List<Task> {
+        return getTasks(status.getPreviousListNames(language), Task.statusComparator())
+    }
+
     /** Sorted tasks (closer deadline first, in other case prevails Trello board list order) **/
-    override fun Board.getTasks(status: TaskStatus): List<Task> {
-        val (selectedLists, listNames) = board.getLists(listsWithCards()).filterReadable(status)
+    private fun Board.getTasks(listNames: Map<String, TaskStatus>, comparator: Comparator<Task>): List<Task> {
+        val selectedLists = board.getLists(listsWithCards()).filter(listNames)
         val tasks = mutableListOf<Task>()
         selectedLists.forEach {
             val listStatus = listNames[it.name!!]!!
+            statusLists[listStatus] = it
             tasks.addAll(it.cards!!.map { it.toTask(listStatus) })
         }
-        return tasks
+        return tasks.sortedWith(comparator)
     }
 
     override fun Board.addTask(task: Task): Task {
@@ -45,13 +56,20 @@ class TrelloTaskService(private val accessToken: String,
         return card.toTask(task.status)
     }
 
+    override fun Board.moveTask(trelloTask: Task, to: TaskStatus) {
+        statusLists[to]!!.moveCard(trelloTask.id) // Requires getTasks called before
+    }
+
+    override fun Board.archiveTask(trelloTask: Task) {
+        trello.archiveCard(trelloTask.id) // Requires getTasks called before
+    }
+
     fun getDefaultBoard() = board
 
     fun getMe() = member
 
-    private fun List<TrelloList>.filterReadable(limit: TaskStatus): Pair<List<TrelloList>, Map<String, TaskStatus>> {
-        val readableLists = limit.getReadableListNamesLower(language)
-        return filter { it.name!! in readableLists } to readableLists
+    private fun List<TrelloList>.filter(names: Map<String, TaskStatus>): List<TrelloList> {
+        return filter { it.name!! in names }
     }
 
     private fun List<TrelloList>.withStatus(status: TaskStatus): TrelloList {
@@ -85,7 +103,7 @@ class TrelloTaskService(private val accessToken: String,
 
     private fun newDefaultBoard(): Board {
         logger.info("Creating new board with language $language for ${member.username} with email ${member.email}")
-        val trelloLocaleIsSupported = member.getLocale()!!.language in i18n
+        val trelloLocaleIsSupported = language in i18n
         val board = trello.newBoard(defaultBoardName, parameters(
                 "defaultLists" to "$trelloLocaleIsSupported",
                 "powerUps" to "cardAging",
@@ -94,14 +112,15 @@ class TrelloTaskService(private val accessToken: String,
         board.enablePowerUp(PowerUp.CARD_AGING.id)
         if (!trelloLocaleIsSupported) {
             val bottom = parameters("pos" to "bottom")
-            board.newList(i18n[S.TODO, DEFAULT_LANGUAGE], bottom)
-            board.newList(i18n[S.DOING, DEFAULT_LANGUAGE], bottom)
-            board.newList(i18n[S.DONE, DEFAULT_LANGUAGE], bottom)
+            board.newList(i18n[S.TODO, language], bottom)
+            board.newList(i18n[S.DOING, language], bottom)
+            board.newList(i18n[S.DONE, language], bottom)
         }
+        board.newList(i18n[S.SOMEDAY, language], parameters("pos" to "top"))
         tasksListener.onNewBoard(board)
         return board
     }
 
-    private fun Card.toTask(status: TaskStatus) = Task(name!!, desc!!, status, due?.toLocalDateTime(), shortUrl)
+    private fun Card.toTask(status: TaskStatus) = Task(name!!, desc!!, status, due?.toLocalDateTime(), shortUrl, listOf(), id)
 
 }

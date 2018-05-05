@@ -52,6 +52,16 @@ open class Trello(private val applicationKey: String, private val userToken: Str
         return post(getUrl(CARDS, richParams), Card::class, richParams.withKeyToken())
     }
 
+    final override fun moveCard(cardId: String, listId: String) {
+        val richParams = parameters("idList" to listId)
+        return put(getUrl(CARD, richParams), richParams.withId(cardId).withKeyToken())
+    }
+
+    final override fun archiveCard(cardId: String) {
+        val richParams = parameters("closed" to "true")
+        return put(getUrl(CARD, richParams), richParams.withId(cardId).withKeyToken())
+    }
+
     private fun format(dateTime: ZonedDateTime?) = dateTime?.let { DateTimeFormatter.ISO_INSTANT.format(it) }.orEmpty()
 
     protected fun <E: TrelloEntity> attachService(entity: E): E = entity.apply { attachService(this@Trello) }
