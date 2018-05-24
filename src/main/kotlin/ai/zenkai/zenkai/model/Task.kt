@@ -3,6 +3,7 @@ package ai.zenkai.zenkai.model
 import ai.zenkai.zenkai.i18n.S
 import ai.zenkai.zenkai.i18n.i18n
 import ai.zenkai.zenkai.services.calendar.CalendarService
+import me.carleslc.kotlin.extensions.strings.isNotNullOrBlank
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.util.*
@@ -27,9 +28,11 @@ data class Task(val title: String,
             append(i18n[S.DEADLINE, language]).append(' ')
                     .appendln(calendarService.prettyApproxDateTime(deadline, zoneId, language))
         }
-        appendln(description)
+        if (description.isNotBlank()) {
+            appendln().appendln(description).appendln()
+        }
         if (tags.isNotEmpty()) {
-            appendln(tags.joinToString(prefix = "Tags: "))
+            appendln(tags.joinToString(prefix = "Tags: ")).appendln()
         }
         url?.let { appendln(it) }
     }

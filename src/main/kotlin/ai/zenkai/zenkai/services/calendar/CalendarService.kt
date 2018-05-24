@@ -14,7 +14,7 @@ import java.time.format.TextStyle
 import java.util.*
 
 @Service
-class CalendarService(private val clockService: ClockService) {
+class CalendarService(val clockService: ClockService) {
 
     private val prettyTimeFormatter by lazy { PrettyTime() }
     private val dialogFlowDateFormatter by lazy { DateTimeFormatter.ofPattern("yyyy-MM-dd") }
@@ -32,14 +32,16 @@ class CalendarService(private val clockService: ClockService) {
 
     fun prettyApproxDateTime(date: LocalDateTime, zoneId: ZoneId, language: String): String {
         val offsetDate = date.atOffset(ZoneOffset.UTC).atZoneSameInstant(zoneId)
-        return "${prettyApprox(offsetDate, language)} (${prettyDateTime(offsetDate.toLocalDateTime(), zoneId, language)})"
+        return "${prettyApprox(offsetDate, language)} (${prettyDateTime(offsetDate.toLocalDateTime(), language)})"
     }
 
-    fun prettyDateTime(date: LocalDateTime, zoneId: ZoneId, language: String): String {
+    fun prettyDateTime(date: LocalDateTime, language: String): String {
         return "${prettyDate(date.toLocalDate(), language)}, ${clockService.pretty24(date.toLocalTime(), language)}"
     }
 
-    private fun prettyApprox(date: ZonedDateTime, language: String): String {
+    fun prettyApproxDateTime(date: ZonedDateTime, language: String): String = prettyApproxDateTime(date.toLocalDateTime(), date.zone, language)
+
+    fun prettyApprox(date: ZonedDateTime, language: String): String {
         return prettyTime(language).format(Date(date.toInstant().toEpochMilli()))
     }
 

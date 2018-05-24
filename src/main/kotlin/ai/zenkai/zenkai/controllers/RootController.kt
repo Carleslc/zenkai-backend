@@ -1,12 +1,18 @@
 package ai.zenkai.zenkai.controllers
 
-import ai.zenkai.zenkai.*
+import ai.zenkai.zenkai.CachedHttpServletRequest
+import ai.zenkai.zenkai.clean
 import ai.zenkai.zenkai.exceptions.badRequest
 import ai.zenkai.zenkai.exceptions.multicatch
+import ai.zenkai.zenkai.fixInt
 import ai.zenkai.zenkai.i18n.S
-import ai.zenkai.zenkai.model.*
+import ai.zenkai.zenkai.model.Bot
+import ai.zenkai.zenkai.model.Handler
+import ai.zenkai.zenkai.model.Task
+import ai.zenkai.zenkai.model.TaskStatus
 import ai.zenkai.zenkai.model.TaskStatus.*
 import ai.zenkai.zenkai.model.TokenType.TRELLO
+import ai.zenkai.zenkai.replace
 import ai.zenkai.zenkai.services.calendar.CalendarService
 import ai.zenkai.zenkai.services.calendar.DatePeriod
 import ai.zenkai.zenkai.services.clock.ClockService
@@ -14,8 +20,8 @@ import ai.zenkai.zenkai.services.weather.WeatherService
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
 import me.carleslc.kotlin.extensions.html.h
+import me.carleslc.kotlin.extensions.standard.isNotNull
 import me.carleslc.kotlin.extensions.standard.isNull
-import me.carleslc.kotlin.extensions.standard.println
 import me.carleslc.kotlin.extensions.strings.isNotNullOrBlank
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
@@ -261,6 +267,41 @@ class RootController(private val clockService: ClockService,
         }
     }
 
+    fun Bot.readEvents() = withCalendar {
+        val date = getDate("date")
+        val events = if (date != null) {
+            readEvents(date)
+        } else {
+            readFollowingEvents(5)
+        }
+        val messageId = if (date.isNotNull()) {
+            when {
+                events.isEmpty() -> S.NO_EVENTS_DATE
+                events.size == 1 -> S.YOUR_EVENT_DATE
+                else -> S.YOUR_EVENTS_DATE
+            }
+        } else when {
+            events.isEmpty() -> S.NO_EVENTS
+            events.size == 1 -> S.YOUR_EVENT
+            else -> S.YOUR_EVENTS
+        }
+        var message = get(messageId).replace("\$size", events.size.toString())
+        if (date != null) {
+            message = message.replace("\$date", calendarService.prettyDate(date, language))
+        }
+        addMessage(message)
+        events.forEach { addEvent(it) }
+        send()
+    }
+
+    fun Bot.addEvent() = withCalendar {
+        val title = getString("event-title")
+        if (title != null) {
+            addMessage("Calendar Add: $title")
+            send()
+        }
+    }
+
     val actionMap: Map<String, Handler> = mapOf(
             "calculator.sum" to { b -> b.sum() },
             "calculator.substraction" to { b -> b.substract() },
@@ -273,7 +314,9 @@ class RootController(private val clockService: ClockService,
             "date.get.period" to { b -> b.calendarPeriod() },
             "tasks.read" to { b -> b.readTasks() },
             "tasks.add" to { b -> b.addTask() },
-            "tasks.delete" to { b -> b.deleteTask() }
+            "tasks.delete" to { b -> b.deleteTask() },
+            "events.read" to { b -> b.readEvents() },
+            "events.add" to { b -> b.addEvent() }
     )
 
 }

@@ -11,6 +11,11 @@ import kotlin.reflect.full.isSubclassOf
 
 fun <T> ok(body: T) = ResponseEntity(body, HttpStatus.OK)
 
+fun badRequest(message: String?, res: HttpServletResponse) {
+    res.setStatus(HttpStatus.BAD_REQUEST.value())
+    res.writer.print(message)
+}
+
 fun badRequest(e: Exception, gson: Gson, res: HttpServletResponse) {
     jsonError(BotError(e.message, HttpStatus.BAD_REQUEST), gson, res)
 }

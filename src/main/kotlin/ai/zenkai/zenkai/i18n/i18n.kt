@@ -17,8 +17,9 @@ object i18n : Set<String> by linkedSetOf(DEFAULT_LANGUAGE, "es") {
     }
 
     private val languageBundles by lazy {
+        val utf8 = UTF8Control()
         supportedLocales.map {
-            it.key to ResourceBundle.getBundle(NAME, it.value, UTF8Control())
+            it.key to ResourceBundle.getBundle(NAME, it.value, utf8)
         }.toMap()
     }
 
@@ -34,6 +35,14 @@ object i18n : Set<String> by linkedSetOf(DEFAULT_LANGUAGE, "es") {
 }
 
 enum class S {
+    PAST,
+    PREVIOUS,
+    AGO,
+    IS,
+    WAS,
+    OF,
+    IN,
+    AND,
     GREETINGS,
     GREETINGS_LOGGED,
     GREETINGS_LOGIN,
@@ -60,6 +69,9 @@ enum class S {
     DONE,
     SOMEDAY,
     NEW_BOARD,
+    NEW_CALENDAR,
+    NO_EVENTS,
+    NO_EVENTS_DATE,
     DEFAULT_BOARD_NAME,
     DEFAULT_BOARD_DESCRIPTION,
     EMPTY_TODO,
@@ -76,21 +88,30 @@ enum class S {
     MOVED_TASK,
     TASK_NOT_FOUND,
     TASK_DELETED,
+    AUTHORIZE_CALENDAR,
+    DEFAULT_CALENDAR_NAME,
+    DEFAULT_CALENDAR_DESCRIPTION,
+    YOUR_EVENT,
+    YOUR_EVENTS,
+    YOUR_EVENT_DATE,
+    YOUR_EVENTS_DATE,
     DEADLINE,
     DEADLINE_SPEECH,
-    PAST,
-    PREVIOUS,
-    AGO,
-    IS,
-    WAS,
-    OF,
-    AND;
+    YEAR,
+    YEARS,
+    MONTH,
+    MONTHS,
+    DAY,
+    DAYS,
+    HOUR,
+    HOURS,
+    MINUTE,
+    MINUTES,
+    SECOND,
+    SECONDS,
+    DURATION;
 }
 
 fun StringBuilder.append(id: S, locale: String) = append(i18n[id, locale])
 
 fun String.toLocale() = i18n[this]!!
-
-fun String.isSpanish() = this == "es"
-
-fun String.isEnglish() = this == "en"

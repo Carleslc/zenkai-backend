@@ -1,5 +1,6 @@
 package ai.zenkai.zenkai.model
 
+import ai.zenkai.zenkai.controllers.auth.GoogleApiAuthorization
 import ai.zenkai.zenkai.exceptions.BadRequestError
 import ai.zenkai.zenkai.exceptions.BotError
 import ai.zenkai.zenkai.exceptions.LoginError
@@ -13,11 +14,15 @@ import ai.zenkai.zenkai.services.calendar.DatePeriod
 import ai.zenkai.zenkai.services.clock.ClockService
 import ai.zenkai.zenkai.services.clock.DEFAULT_TIME_ZONE
 import ai.zenkai.zenkai.services.clock.toZoneIdOrThrow
+import ai.zenkai.zenkai.services.events.CalendarEventService
+import ai.zenkai.zenkai.services.events.CalendarListener
+import ai.zenkai.zenkai.services.events.Event
 import ai.zenkai.zenkai.services.tasks.TasksListener
 import ai.zenkai.zenkai.services.tasks.TrelloTaskService
 import ai.zenkai.zenkai.services.tasks.trello.Board
 import arrow.data.Try
 import arrow.data.getOrElse
+import com.google.api.client.googleapis.json.GoogleJsonResponseException
 import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.tmsdurham.actions.DialogflowApp
@@ -25,12 +30,16 @@ import com.tmsdurham.actions.SimpleResponse
 import main.java.com.tmsdurham.dialogflow.sample.DialogflowAction
 import me.carleslc.kotlin.extensions.standard.isNull
 import me.carleslc.kotlin.extensions.standard.letIf
+import me.carleslc.kotlin.extensions.standard.letOrElse
 import me.carleslc.kotlin.extensions.strings.isNotNullOrBlank
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.web.client.HttpClientErrorException
-import java.time.*
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.ZoneId
 import javax.servlet.http.HttpServletRequest
 import javax.servlet.http.HttpServletResponse
 
@@ -40,11 +49,12 @@ const val USER_CONTEXT: String = "user-logged-in"
 
 data class Bot(val language: String,
                val timezone: ZoneId,
+               private val baseUrl: String,
                private val action: DialogflowApp,
                private val tokens: MutableMap<TokenType, String>,
                private val calendarService: CalendarService,
                private val clockService: ClockService,
-               private var error: BotError? = null) : TasksListener {
+               private var error: BotError? = null) : TasksListener, CalendarListener {
 
     private val messages by lazy { mutableListOf<SimpleResponse>() }
 
@@ -95,12 +105,39 @@ data class Bot(val language: String,
         }
     }
 
+    fun addEvent(event: Event) {
+        with(event) {
+            addMessage(event.getSpeech(language, calendarService), event.getDisplayText(language, calendarService))
+        }
+    }
+
     fun <T> fill(obj: T?, default: String, fill: T.() -> String) {
         tell(if (obj.isNull()) default else fill(obj!!))
     }
 
     fun withTrello(block: TrelloTaskService.() -> Unit) = requireToken(TokenType.TRELLO) {
         block(TrelloTaskService(it, this, timezone))
+    }
+
+    fun withCalendar(block: CalendarEventService.() -> Unit) = withTrello {
+        val auth = GoogleApiAuthorization(getMe().email!!)
+        logger.info("GCal Refresh Token: " + auth.refreshToken.isNotNullOrBlank())
+        logger.info("GCal Expiration " + auth.expiration)
+        fun needsLoginCalendar() {
+            needsLogin(S.AUTHORIZE_CALENDAR, auth.getSimpleAuthorizationUrl())
+            auth.clear()
+        }
+        if (auth.hasValidCredentials()) {
+            try {
+                block(CalendarEventService(auth.getCalendar()!!, timezone, language, this@Bot))
+            } catch (authError: GoogleJsonResponseException) {
+                if (authError.statusCode == HttpStatus.UNAUTHORIZED.value()) {
+                    needsLoginCalendar()
+                } else HttpClientErrorException(HttpStatus.values().find { it.value() == authError.statusCode }!!)
+            }
+        } else {
+            needsLoginCalendar()
+        }
     }
 
     fun containsToken(type: TokenType) = tokens[type] != null
@@ -123,6 +160,12 @@ data class Bot(val language: String,
         error = LoginError(type)
         tokens[type] = ""
         action.fillUserTokens(tokens)
+        send()
+    }
+
+    fun needsLogin(id: S, authUrl: String) {
+        addMessage(id)
+        addText(authUrl)
         send()
     }
 
@@ -224,6 +267,11 @@ data class Bot(val language: String,
         addText(board.shortUrl!!)
     }
 
+    override fun onNewCalendar() {
+        addMessage(get(S.NEW_CALENDAR))
+        addText("https://calendar.google.com/calendar/")
+    }
+
     companion object Parser {
 
         val logger: Logger by lazy { LoggerFactory.getLogger(this::class.java) }
@@ -252,10 +300,10 @@ data class Bot(val language: String,
                     fillDataTokens(data?.tokens, tokens, language)
                     action.fillUserTokens(tokens)
                     logger.info("Tokens $tokens")
-                    bot = Bot(language, timezone, action, tokens, calendarService, clockService)
+                    bot = Bot(language, timezone, req.requestURL.toString(), action, tokens, calendarService, clockService)
                     handler(bot)
                 }
-            } catch (e: IllegalAccessException) {
+            } catch (e: IllegalArgumentException) {
                 action.badRequest(e)
             } catch (e: HttpClientErrorException) {
                 if (bot != null && e.statusCode == HttpStatus.UNAUTHORIZED) {
