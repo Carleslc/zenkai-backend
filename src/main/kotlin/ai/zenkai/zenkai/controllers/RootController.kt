@@ -218,8 +218,7 @@ class RootController(private val clockService: ClockService,
                 val doingTasks = count { it.status == DOING }
                 if (doingTasks > 1) {
                     addMessage(get(S.MULTITASKING).replace("\$size", doingTasks.toString()))
-                }
-                if (size > 10 && getDefaultBoard().getReadableTasks(SOMEDAY).isEmpty()) {
+                } else if (size > 10 && getDefaultBoard().getReadableTasks(SOMEDAY).isEmpty()) {
                     addMessage(S.EMPTY_SOMEDAY)
                 }
             }
