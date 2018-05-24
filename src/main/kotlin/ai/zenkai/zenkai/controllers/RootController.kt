@@ -182,9 +182,9 @@ class RootController(private val clockService: ClockService,
         logger.info("Task Type $taskType")
         val status = TaskStatus.parse(taskType)
         with (getDefaultBoard().getReadableTasks(status)) {
-            var initialMessageId: S? = null
+            var statusMessageId: S? = null
             when (status) {
-                DONE -> initialMessageId = when {
+                DONE -> statusMessageId = when {
                     isEmpty() -> S.EMPTY_DONE
                     size == 1 -> S.COMPLETED_FIRST_TASK
                     size < 5 -> S.COMPLETED_TASKS
@@ -192,30 +192,37 @@ class RootController(private val clockService: ClockService,
                     else -> S.COMPLETED_TASKS_KEEP_IT_UP
                 }
                 DOING -> {
-                    initialMessageId = when {
+                    statusMessageId = when {
                         isEmpty() -> S.EMPTY_DOING
                         size == 1 -> S.DOING_TASK
                         else -> S.MULTITASKING
                     }
                 }
                 TODO -> {
-                    initialMessageId = when {
+                    statusMessageId = when {
                         isEmpty() -> S.EMPTY_TODO
                         size == 1 -> S.TODO_SINGLE
-                        count { it.status == DOING } > 1 -> S.MULTITASKING
                         else -> S.TODO_FOCUS
                     }
                 }
                 SOMEDAY -> {
-                    initialMessageId = when {
+                    statusMessageId = when {
                         isEmpty() -> S.EMPTY_SOMEDAY
                         size == 1 -> S.SOMEDAY_SINGLE
                         else -> S.SOMEDAY_TASKS
                     }
                 }
             }
-            val initialMessage = get(initialMessageId).replace("\$size", size.toString())
-            addMessage(initialMessage)
+            addMessage(get(statusMessageId).replace("\$size", size.toString()))
+            if (status == TODO) {
+                val doingTasks = count { it.status == DOING }
+                if (doingTasks > 1) {
+                    addMessage(get(S.MULTITASKING).replace("\$size", doingTasks.toString()))
+                }
+                if (size > 10 && getDefaultBoard().getReadableTasks(SOMEDAY).isEmpty()) {
+                    addMessage(S.EMPTY_SOMEDAY)
+                }
+            }
             if (isNotEmpty()) {
                 addMessage(get(if (size == 1) S.YOUR_TASK else S.YOUR_TASKS))
                 forEach(::addTask)
