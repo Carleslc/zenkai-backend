@@ -206,17 +206,21 @@ class RootController(private val clockService: ClockService,
                         else -> S.TODO_FOCUS
                     }
                 }
-                else -> { /* SOMEDAY, fallback to default answer */ }
-            }
-            if (initialMessageId != null) {
-                val initialMessage = get(initialMessageId).replace("\$size", size.toString())
-                addMessage(initialMessage)
-                if (isNotEmpty()) {
-                    addMessage(get(if (size == 1) S.YOUR_TASK else S.YOUR_TASKS))
-                    forEach(::addTask)
+                SOMEDAY -> {
+                    initialMessageId = when {
+                        isEmpty() -> S.EMPTY_SOMEDAY
+                        size == 1 -> S.SOMEDAY_SINGLE
+                        else -> S.SOMEDAY_TASKS
+                    }
                 }
-                send()
             }
+            val initialMessage = get(initialMessageId).replace("\$size", size.toString())
+            addMessage(initialMessage)
+            if (isNotEmpty()) {
+                addMessage(get(if (size == 1) S.YOUR_TASK else S.YOUR_TASKS))
+                forEach(::addTask)
+            }
+            send()
         }
     }
 
