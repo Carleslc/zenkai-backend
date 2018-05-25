@@ -4,7 +4,9 @@ import ai.zenkai.zenkai.i18n.S
 import ai.zenkai.zenkai.i18n.i18n
 import ai.zenkai.zenkai.services.calendar.CalendarService
 import ai.zenkai.zenkai.services.calendar.HumanReadableDuration
+import ai.zenkai.zenkai.services.calendar.withOffset
 import me.carleslc.kotlin.extensions.strings.isNotNullOrBlank
+import org.slf4j.LoggerFactory
 import java.time.ZonedDateTime
 
 data class Event(val title: String,
@@ -14,6 +16,8 @@ data class Event(val title: String,
                  val location: String? = null,
                  val url: String? = null,
                  val id: String? = null) {
+
+    private val logger = LoggerFactory.getLogger(this::class.java)
 
     fun getDisplayText(language: String, calendarService: CalendarService) = buildString {
         appendln(title)
@@ -42,7 +46,10 @@ data class Event(val title: String,
     }
 
     fun getSpeech(language: String, calendarService: CalendarService) = buildString {
-        append(title).append(' ').append(calendarService.prettyApprox(start, language))
+        append(title).append(' ').append(calendarService.prettyApprox(start.withOffset(), language))
+        if (location.isNotNullOrBlank()) {
+            append(' ').append(i18n[S.AT, language]).append(' ').append(location)
+        }
     }
 
 }

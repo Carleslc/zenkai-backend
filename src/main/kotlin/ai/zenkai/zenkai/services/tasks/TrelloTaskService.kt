@@ -5,6 +5,7 @@ import ai.zenkai.zenkai.config.TRELLO_API_KEY
 import ai.zenkai.zenkai.i18n.DEFAULT_LANGUAGE
 import ai.zenkai.zenkai.i18n.S
 import ai.zenkai.zenkai.i18n.i18n
+import ai.zenkai.zenkai.i18n.toLocale
 import ai.zenkai.zenkai.model.Task
 import ai.zenkai.zenkai.model.TaskStatus
 import ai.zenkai.zenkai.services.parameters
@@ -43,7 +44,7 @@ class TrelloTaskService(private val accessToken: String,
         val selectedLists = board.getLists(listsWithCards()).filter(listNames)
         val tasks = mutableListOf<Task>()
         selectedLists.forEach {
-            val listStatus = listNames[it.name!!]!!
+            val listStatus = listNames[it.name!!.toLowerCase(language.toLocale())]!!
             statusLists[listStatus] = it
             tasks.addAll(it.cards!!.map { it.toTask(listStatus) })
         }
@@ -69,12 +70,13 @@ class TrelloTaskService(private val accessToken: String,
     fun getMe() = member
 
     private fun List<TrelloList>.filter(names: Map<String, TaskStatus>): List<TrelloList> {
-        return filter { it.name!! in names }
+        val locale = language.toLocale()
+        return filter { it.name!!.toLowerCase(locale) in names }
     }
 
     private fun List<TrelloList>.withStatus(status: TaskStatus): TrelloList {
         val statusListName = status.getListName(language)
-        return firstOrNull { it.name!! == statusListName }
+        return firstOrNull { it.name!!.equals(statusListName, ignoreCase=true) }
                 ?: board.newList(i18n[status.idNameList, language], parameters("pos" to "bottom"))
     }
 

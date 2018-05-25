@@ -2,12 +2,13 @@ package ai.zenkai.zenkai.services.events
 
 import ai.zenkai.zenkai.i18n.S
 import ai.zenkai.zenkai.i18n.i18n
+import ai.zenkai.zenkai.services.calendar.withOffset
+import com.google.api.client.googleapis.json.GoogleJsonResponseException
 import com.google.api.client.util.DateTime
 import com.google.api.services.calendar.model.Calendar
 import com.google.api.services.calendar.model.EventDateTime
 import me.carleslc.kotlin.extensions.standard.alsoIf
 import me.carleslc.kotlin.extensions.standard.isNotNull
-import me.carleslc.kotlin.extensions.strings.isNotNullOrBlank
 import me.carleslc.kotlin.extensions.time.toDate
 import org.slf4j.LoggerFactory
 import java.net.URLDecoder
@@ -27,20 +28,27 @@ class CalendarEventService(private val service: CalendarService,
 
     private val defaultCalendarId by lazy { URLDecoder.decode(findDefaultCalendar(), "UTF-8") }
 
-    override fun readFollowingEvents(n: Int): List<Event> {
-        val now = DateTime(System.currentTimeMillis())
-        return configureEvents(start=now, maxResults=n).execute().items.toEvents()
+    override fun readFollowingEvents(n: Int, calendarId: String?): List<Event> {
+        return configureEvents(maxResults=n, calendarId=calendarId).execute().items.toEvents()
     }
 
-    override fun readEvents(date: LocalDate): List<Event> {
+    override fun readEvents(date: LocalDate, calendarId: String?): List<Event> {
         val start = date.atStartOfDay().toDateTime()
         val end = date.plusDays(1).atStartOfDay().toDateTime()
-        return configureEvents(start, end).execute().items.toEvents()
+        return configureEvents(start, end, calendarId=calendarId).execute().items.toEvents()
     }
 
-    private fun configureEvents(start: DateTime, end: DateTime? = null, maxResults: Int = 0): CalendarService.Events.List {
-        return service.events().list(defaultCalendarId)
-                .setTimeMin(start)
+    override fun createEvent(event: Event, calendarId: String?): Event {
+        return service.events().insert(calendarId ?: defaultCalendarId, event.toServiceEvent()).execute().toEvent()
+    }
+
+    override fun createEvent(eventQuery: String, calendarId: String?): Event {
+        return service.events().quickAdd(calendarId ?: defaultCalendarId, eventQuery).execute().toEvent()
+    }
+
+    private fun configureEvents(start: DateTime? = null, end: DateTime? = null, maxResults: Int = 0, calendarId: String? = null): CalendarService.Events.List {
+        return service.events().list(calendarId ?: defaultCalendarId)
+                .setTimeMin(start ?: DateTime(System.currentTimeMillis()))
                 .setTimeZone(timezone.id)
                 .setOrderBy("startTime")
                 .setSingleEvents(true)
@@ -78,7 +86,7 @@ class CalendarEventService(private val service: CalendarService,
 
     private fun DateTime.toZonedDateTime() = ZonedDateTime.ofInstant(Instant.ofEpochMilli(value), ZoneOffset.ofTotalSeconds(timeZoneShift/1000))
 
-    private fun ServiceEvent.toEvent() = Event(summary.orEmpty(), start.dateTime.toZonedDateTime(), end.dateTime.toZonedDateTime(), description.orEmpty(), location, htmlLink, id)
+    private fun ServiceEvent.toEvent() = Event(summary.orEmpty(), start.dateTime.toZonedDateTime().withOffset(timezone), end.dateTime.toZonedDateTime().withOffset(timezone), description.orEmpty(), location, htmlLink, id)
 
     private fun List<ServiceEvent>.toEvents(): List<Event> = map { it.toEvent() }
 

@@ -4,6 +4,7 @@ import ai.zenkai.zenkai.cleanFormat
 import ai.zenkai.zenkai.i18n.S
 import ai.zenkai.zenkai.i18n.i18n
 import ai.zenkai.zenkai.i18n.toLocale
+import ai.zenkai.zenkai.model.Bot.Parser.logger
 import ai.zenkai.zenkai.services.clock.ClockService
 import ai.zenkai.zenkai.words
 import org.ocpsoft.prettytime.PrettyTime
@@ -31,7 +32,7 @@ class CalendarService(val clockService: ClockService) {
     fun formatDate(date: LocalDate): String = dialogFlowDateFormatter.format(date)
 
     fun prettyApproxDateTime(date: LocalDateTime, zoneId: ZoneId, language: String): String {
-        val offsetDate = date.atOffset(ZoneOffset.UTC).atZoneSameInstant(zoneId)
+        val offsetDate = date.withOffset(zoneId)
         return "${prettyApprox(offsetDate, language)} (${prettyDateTime(offsetDate.toLocalDateTime(), language)})"
     }
 
@@ -46,7 +47,7 @@ class CalendarService(val clockService: ClockService) {
     }
 
     fun prettyApprox(date: LocalDateTime, zoneId: ZoneId, language: String): String {
-        return prettyApprox(date.atOffset(ZoneOffset.UTC).atZoneSameInstant(zoneId), language)
+        return prettyApprox(date.withOffset(zoneId), language)
     }
 
     fun prettyDate(date: LocalDate, language: String) : String {
@@ -85,8 +86,23 @@ class CalendarService(val clockService: ClockService) {
         return query.cleanFormat(locale).words(locale).any { it in months[language]!! }
     }
 
+    fun implicitTime(from: ZonedDateTime, date: ZonedDateTime, original: String?, language: String, zoneId: ZoneId): ZonedDateTime {
+        if (original != null && from.hour < IMPLICIT_START_OF_DAY_HOUR && hasTomorrow(original, language)) {
+            var time = date.toLocalTime()
+            if (time.hour < IMPLICIT_START_OF_DAY_HOUR && isTomorrow(original, language)) {
+                time = time.plusHours(12)
+            }
+            return date.toLocalDate().minusDays(1).atTime(time).atZone(zoneId)!!
+        }
+        return date
+    }
+
+    private fun isTomorrow(query: String, language: String) = i18n[S.TOMORROW, language] == query.trim().toLowerCase(language.toLocale())
+
+    private fun hasTomorrow(query: String, language: String) = i18n[S.TOMORROW, language] in query.toLowerCase(language.toLocale())
+
     fun isPast(query: String, language: String): Boolean {
-        val lower = query.toLowerCase()
+        val lower = query.toLowerCase(language.toLocale())
         return i18n[S.TOMORROW, language] !in lower && (i18n[S.WAS, language] in lower || i18n[S.PAST, language] in lower
                 || i18n[S.AGO, language] in lower || i18n[S.PREVIOUS, language] in lower)
     }
@@ -123,6 +139,12 @@ fun LocalDate.atEndOfWeek(): LocalDate {
     return plusDays(offset)
 }
 
+fun ZonedDateTime.withOffset(zoneId: ZoneId = zone): ZonedDateTime = toLocalDateTime().withOffset(zoneId)
+
+fun LocalDateTime.withOffset(zoneId: ZoneId): ZonedDateTime = atOffset(ZoneOffset.UTC).atZoneSameInstant(zoneId)
+
 fun DayOfWeek.displayName(locale: Locale): String = getDisplayName(TextStyle.FULL, locale)
 
 fun Month.displayName(locale: Locale): String = getDisplayName(TextStyle.FULL, locale)
+
+const val IMPLICIT_START_OF_DAY_HOUR = 5

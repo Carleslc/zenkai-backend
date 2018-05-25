@@ -2,6 +2,7 @@ package ai.zenkai.zenkai.model
 
 import ai.zenkai.zenkai.i18n.S
 import ai.zenkai.zenkai.i18n.i18n
+import ai.zenkai.zenkai.i18n.toLocale
 
 enum class TaskStatus(val idNameList: S) {
     SOMEDAY(S.SOMEDAY),
@@ -31,7 +32,7 @@ enum class TaskStatus(val idNameList: S) {
         return names
     }
 
-    fun getListName(language: String) = i18n[idNameList, language]
+    fun getListName(language: String) = i18n[idNameList, language].toLowerCase(language.toLocale())
 
     private fun MutableMap<String, TaskStatus>.add(status: TaskStatus, language: String) {
         this[status.getListName(language)] = status

@@ -30,7 +30,6 @@ import com.tmsdurham.actions.SimpleResponse
 import main.java.com.tmsdurham.dialogflow.sample.DialogflowAction
 import me.carleslc.kotlin.extensions.standard.isNull
 import me.carleslc.kotlin.extensions.standard.letIf
-import me.carleslc.kotlin.extensions.standard.letOrElse
 import me.carleslc.kotlin.extensions.strings.isNotNullOrBlank
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -64,19 +63,6 @@ data class Bot(val language: String,
 
     var lastRequiredToken: TokenType? = null
 
-    fun tell(message: String) {
-        addMessage(message)
-        send()
-    }
-
-    fun tell(id: S) = tell(get(id))
-
-    fun tell(textToSpeech: String? = null, displayText: String? = null) {
-        if (addMessage(textToSpeech, displayText)) {
-            send()
-        }
-    }
-
     fun addMessage(textToSpeech: String? = null, displayText: String? = null): Boolean {
         if (textToSpeech.isNotNullOrBlank() || displayText.isNotNullOrBlank()) {
             messages.add(SimpleResponse(textToSpeech = textToSpeech.nullIfBlank(), displayText = displayText.nullIfBlank()))
@@ -93,6 +79,10 @@ data class Bot(val language: String,
 
     fun addMessage(s: String) = addMessage(s, s)
 
+    fun addMessages(vararg ids: S) {
+        ids.forEach { addMessage(it) }
+    }
+
     fun addMessages(s: String) {
         s.split('\n').forEach { addMessage(it) }
     }
@@ -107,12 +97,13 @@ data class Bot(val language: String,
 
     fun addEvent(event: Event) {
         with(event) {
+            logger.info("Add event message: $event")
             addMessage(event.getSpeech(language, calendarService), event.getDisplayText(language, calendarService))
         }
     }
 
     fun <T> fill(obj: T?, default: String, fill: T.() -> String) {
-        tell(if (obj.isNull()) default else fill(obj!!))
+        addMessage(if (obj.isNull()) default else fill(obj!!))
     }
 
     fun withTrello(block: TrelloTaskService.() -> Unit) = requireToken(TokenType.TRELLO) {
@@ -124,10 +115,11 @@ data class Bot(val language: String,
         logger.info("GCal Refresh Token: " + auth.refreshToken.isNotNullOrBlank())
         logger.info("GCal Expiration " + auth.expiration)
         fun needsLoginCalendar() {
-            needsLogin(S.AUTHORIZE_CALENDAR, auth.getSimpleAuthorizationUrl())
+            needsLogin(S.LOGIN_CALENDAR, auth.getSimpleAuthorizationUrl())
             auth.clear()
         }
         if (auth.hasValidCredentials()) {
+            logger.info("Valid credentials")
             try {
                 block(CalendarEventService(auth.getCalendar()!!, timezone, language, this@Bot))
             } catch (authError: GoogleJsonResponseException) {
@@ -140,7 +132,14 @@ data class Bot(val language: String,
         }
     }
 
-    fun containsToken(type: TokenType) = tokens[type] != null
+    fun login() = withCalendar {
+        addMessage(S.GREETINGS_LOGGED)
+    }
+
+    fun greetings() {
+        addMessage(S.GREETINGS)
+        login()
+    }
 
     private fun requireToken(type: TokenType, block: (String) -> Unit) {
         val token = tokens[type]
@@ -152,24 +151,26 @@ data class Bot(val language: String,
         }
     }
 
-    fun needsLogin(id: S = S.LOGIN_TOKEN, type: TokenType = lastRequiredToken!!) {
-        val messages = get(id).replace("\$type", type.toString()).split('\n')
+    fun needsLogin(type: TokenType = lastRequiredToken!!) {
+        val id = when (type) {
+            TokenType.TRELLO -> S.LOGIN_TASKS
+            TokenType.TOGGL -> S.LOGIN_TIMER
+        }
+        val messages = get(id).split('\n')
         addMessage(messages[0])
         addText(type.authUrl)
         addMessage(messages[1])
         error = LoginError(type)
         tokens[type] = ""
         action.fillUserTokens(tokens)
-        send()
     }
 
     fun needsLogin(id: S, authUrl: String) {
         addMessage(id)
         addText(authUrl)
-        send()
     }
 
-    fun send(ask: Boolean = false) {
+    private fun send() {
         if (error == null) {
             // TODO: Redirect with followupEvent instead clearing slot filling contexts
             action.completeTokensFilling(tokens)
@@ -180,7 +181,7 @@ data class Bot(val language: String,
                         "language" to language,
                         "timezone" to timezone.id,
                         "tokens" to tokens.map { Token(it.key, it.value) })
-                        .apply { if (error != null) this["error"] = error }, ask)
+                        .apply { if (error != null) this["error"] = error })
     }
 
     fun getParam(param: String): Any? = action.getArgument(param)
@@ -229,18 +230,18 @@ data class Bot(val language: String,
         return getStringWithContext(param, context).parseTime()
     }
 
-    private fun Pair<LocalDate?, LocalTime?>.parseDateTime(): LocalDateTime? {
+    private fun Pair<LocalDate?, LocalTime?>.parseDateTime(defaultDate: LocalDate? = null, defaultTime: LocalTime? = null): LocalDateTime? {
         val (date, time) = this
-        if (date == null && time == null) return null
-        return (date ?: calendarService.today(timezone)).atTime(time ?: LocalTime.MIDNIGHT.withSecond(0))
+        if (date == null && time == null && defaultDate == null && defaultTime == null) return null
+        return (date ?: defaultDate ?: calendarService.today(timezone)).atTime(time ?: defaultTime ?: LocalTime.MIDNIGHT.withSecond(0))
     }
 
-    fun getDateTime(dateParam: String, timeParam: String): LocalDateTime? {
-        return (getDate(dateParam) to getTime(timeParam)).parseDateTime()
+    fun getDateTime(dateParam: String, timeParam: String, defaultDate: LocalDate? = null, defaultTime: LocalTime? = null): LocalDateTime? {
+        return (getDate(dateParam) to getTime(timeParam)).parseDateTime(defaultDate, defaultTime)
     }
 
-    fun getDateTimeWithContext(dateParam: String, timeParam: String, context: String = USER_CONTEXT): LocalDateTime? {
-        return (getDateWithContext(dateParam, context) to getTimeWithContext(timeParam, context)).parseDateTime()
+    fun getDateTimeWithContext(dateParam: String, timeParam: String, defaultDate: LocalDate? = null, defaultTime: LocalTime? = null, context: String = USER_CONTEXT): LocalDateTime? {
+        return (getDateWithContext(dateParam, context) to getTimeWithContext(timeParam, context)).parseDateTime(defaultDate, defaultTime)
     }
 
     private fun Any?.parseDatePeriod(): DatePeriod? {
@@ -302,6 +303,7 @@ data class Bot(val language: String,
                     logger.info("Tokens $tokens")
                     bot = Bot(language, timezone, req.requestURL.toString(), action, tokens, calendarService, clockService)
                     handler(bot)
+                    bot.send()
                 }
             } catch (e: IllegalArgumentException) {
                 action.badRequest(e)
@@ -429,11 +431,11 @@ private fun DialogflowApp.serviceUnavailable(e: Exception) {
     error(BotError(e.message, HttpStatus.SERVICE_UNAVAILABLE), e)
 }
 
-private fun DialogflowApp.fillAndSend(speech: String?, data: Map<String, Any>, ask: Boolean = false) {
+private fun DialogflowApp.fillAndSend(speech: String?, data: Map<String, Any>) {
     data { this["zenkai"] = data }
     val textToSpeech = speech.orEmpty()
     logger.info("Send '$textToSpeech' with data $data")
-    if (ask) ask(textToSpeech) else tell(textToSpeech)
+    tell(textToSpeech)
 }
 
 private data class ZenkaiRequestData(val timezone: String?, val tokens: List<Token>?)

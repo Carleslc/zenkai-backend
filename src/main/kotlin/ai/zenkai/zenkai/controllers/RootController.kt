@@ -11,11 +11,12 @@ import ai.zenkai.zenkai.model.Handler
 import ai.zenkai.zenkai.model.Task
 import ai.zenkai.zenkai.model.TaskStatus
 import ai.zenkai.zenkai.model.TaskStatus.*
-import ai.zenkai.zenkai.model.TokenType.TRELLO
 import ai.zenkai.zenkai.replace
 import ai.zenkai.zenkai.services.calendar.CalendarService
 import ai.zenkai.zenkai.services.calendar.DatePeriod
+import ai.zenkai.zenkai.services.calendar.IMPLICIT_START_OF_DAY_HOUR
 import ai.zenkai.zenkai.services.clock.ClockService
+import ai.zenkai.zenkai.services.events.Event
 import ai.zenkai.zenkai.services.weather.WeatherService
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
@@ -29,6 +30,7 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RestController
 import java.time.DayOfWeek
+import java.time.ZonedDateTime
 import javax.servlet.http.HttpServletRequest
 import javax.servlet.http.HttpServletResponse
 
@@ -61,31 +63,31 @@ class RootController(private val clockService: ClockService,
         val b = getDouble("number2")
         val result = a + b
 
-        tell(get(S.SUM).replace("\$1" to fixInt(a), "\$2" to fixInt(b), "\$3" to fixInt(result)))
+        addMessage(get(S.SUM).replace("\$1" to fixInt(a), "\$2" to fixInt(b), "\$3" to fixInt(result)))
     }
 
     fun Bot.substract() {
         val a = getDouble("number1")
         val b = getDouble("number2")
         val result = a - b
-        tell(get(S.SUBSTRACT).replace("\$1" to fixInt(a), "\$2" to fixInt(b), "\$3" to fixInt(result)))
+        addMessage(get(S.SUBSTRACT).replace("\$1" to fixInt(a), "\$2" to fixInt(b), "\$3" to fixInt(result)))
     }
 
     fun Bot.multiply() {
         val a = getDouble("number1")
         val b = getDouble("number2")
         val result = a * b
-        tell(get(S.MULTIPLY).replace("\$1" to fixInt(a), "\$2" to fixInt(b), "\$3" to fixInt(result)))
+        addMessage(get(S.MULTIPLY).replace("\$1" to fixInt(a), "\$2" to fixInt(b), "\$3" to fixInt(result)))
     }
 
     fun Bot.divide() {
         val a = getDouble("number1")
         val b = getDouble("number2")
         if (b == 0.toDouble()) {
-            tell(S.DIVIDE_ZERO)
+            addMessage(S.DIVIDE_ZERO)
         } else {
             val result = a / b
-            tell(get(S.DIVIDE).replace("\$1" to fixInt(a), "\$2" to fixInt(b), "\$3" to fixInt(result)))
+            addMessage(get(S.DIVIDE).replace("\$1" to fixInt(a), "\$2" to fixInt(b), "\$3" to fixInt(result)))
         }
     }
 
@@ -99,21 +101,12 @@ class RootController(private val clockService: ClockService,
         }
     }
 
-    fun Bot.greetings() {
-        addMessage(S.GREETINGS)
-        if (!containsToken(TRELLO)) {
-            needsLogin(S.GREETINGS_LOGIN, TRELLO)
-        } else {
-            tell(S.GREETINGS_LOGGED)
-        }
-    }
-
     fun Bot.clock() {
         val time = clockService.now(timezone)
         val prefix = get(if (time.hour == 1 || time.hour == 13) S.CURRENT_TIME_SINGLE else S.CURRENT_TIME)
         val formattedTime = clockService.format(time, language)
         val speech = "${prefix.capitalize()} $formattedTime".trim()
-        tell(speech, formattedTime)
+        addMessage(speech, formattedTime)
     }
 
     fun Bot.calendarPeriod() {
@@ -134,7 +127,7 @@ class RootController(private val clockService: ClockService,
         val originalString = original.clean().capitalize()
         var be = isOrWas(date)
         if (originalString.isBlank()) be = be.capitalize()
-        tell("$originalString $be $format".trim())
+        addMessage("$originalString $be $format".trim())
     }
 
     fun Bot.calendar() {
@@ -174,7 +167,7 @@ class RootController(private val clockService: ClockService,
             else -> processAskingOr { calendarService.prettyDate(date, language) }
         }
 
-        tell("${original.clean().capitalize()} ${isOrWas(date)} $format")
+        addMessage("${original.clean().capitalize()} ${isOrWas(date)} $format")
     }
 
     fun Bot.readTasks() = withTrello {
@@ -226,7 +219,6 @@ class RootController(private val clockService: ClockService,
                 addMessage(get(if (size == 1) S.YOUR_TASK else S.YOUR_TASKS))
                 forEach(::addTask)
             }
-            send()
         }
     }
 
@@ -256,7 +248,6 @@ class RootController(private val clockService: ClockService,
             addMessage(get(messageId).replace("\$type", status.getListName(language)))
             addMessage(S.YOUR_TASK)
             addTask(task)
-            send()
         }
     }
 
@@ -273,7 +264,6 @@ class RootController(private val clockService: ClockService,
             } else {
                 addMessage(S.TASK_NOT_FOUND)
             }
-            send()
         }
     }
 
@@ -287,12 +277,12 @@ class RootController(private val clockService: ClockService,
         val messageId = if (date.isNotNull()) {
             when {
                 events.isEmpty() -> S.NO_EVENTS_DATE
-                events.size == 1 -> S.YOUR_EVENT_DATE
+                events.size == 1 -> S.SINGLE_EVENT_DATE
                 else -> S.YOUR_EVENTS_DATE
             }
         } else when {
             events.isEmpty() -> S.NO_EVENTS
-            events.size == 1 -> S.YOUR_EVENT
+            events.size == 1 -> S.SINGLE_EVENT
             else -> S.YOUR_EVENTS
         }
         var message = get(messageId).replace("\$size", events.size.toString())
@@ -301,15 +291,72 @@ class RootController(private val clockService: ClockService,
         }
         addMessage(message)
         events.forEach { addEvent(it) }
-        send()
     }
 
-    fun Bot.addEvent() = withCalendar {
+    fun Bot.addSingleEvent() = withCalendar {
         val title = getString("event-title")
-        if (title != null) {
-            addMessage("Calendar Add: $title")
-            send()
+        var start = getDateTime("start-date", "start-time")?.atZone(timezone)
+        var end = getDateTime("end-date", "end-time", defaultDate = start?.toLocalDate())?.atZone(timezone)
+        val startOriginal = getString("start-date-original")
+        val endOriginal = getString("end-date-original")
+        val location = getString("location")
+        logger.info("Title: $title")
+        logger.info("Start: $start (Original $startOriginal)")
+        logger.info("End:   $end (Original $endOriginal)")
+        if (title != null && start != null && end != null) {
+            val now = ZonedDateTime.now(timezone)!!
+            start = calendarService.implicitTime(now, start, startOriginal, language, timezone)
+            end = calendarService.implicitTime(now, end, endOriginal, language, timezone)
+            if (start.toLocalDate().month != end.toLocalDate().month) {
+                logger.info("Different month")
+                if (startOriginal != null && !calendarService.isDayOfMonth(startOriginal, language)) {
+                    logger.info("Start without month")
+                    start = start.withMonth(end.toLocalDate().monthValue)!!
+                } else if (endOriginal != null && !calendarService.isDayOfMonth(endOriginal, language)) {
+                    logger.info("End without month")
+                    end = end.withMonth(start.toLocalDate().monthValue)!!
+                }
+            }
+            if (start < now) {
+                logger.info("Start < now")
+                var shift = true
+                if (start.toLocalDate() < now.toLocalDate()) {
+                    logger.info("Start Date < Today")
+                    start = now.toLocalDate().atTime(start.toLocalTime()).atZone(timezone)!!
+                    shift = start < now
+                }
+                if (shift) {
+                    start = start.plusHours(12)!!
+                }
+                logger.info("Shifted start time: $shift")
+            }
+            if (end.toLocalDate() < start.toLocalDate()) {
+                logger.info("End Date < Start Date")
+                end = start.toLocalDate().atTime(end.toLocalTime()).atZone(timezone)!!
+            }
+            if (end <= start) {
+                logger.info("End Time <= Start Time")
+                if (endOriginal != null) {
+                    logger.info("Shifted end time")
+                    end = end.plusHours(12)!!
+                }
+            }
+            if (endOriginal == null) {
+                logger.info("end-time not specified -> end = start + 1h")
+                end = start.toLocalDate().atTime(start.toLocalTime()).plusHours(1).atZone(timezone)!!
+            }
+            logger.info("Start Finish: $start")
+            logger.info("End Finish:   $end")
+            val event = createEvent(Event(title.capitalize(), start, end, query, location))
+            addMessages(S.ADDED_EVENT, S.YOUR_EVENT)
+            addEvent(event)
         }
+    }
+
+    fun Bot.addQuickEvent() = withCalendar {
+        val event = createEvent(query)
+        addMessages(S.ADDED_EVENT, S.YOUR_EVENT)
+        addEvent(event)
     }
 
     val actionMap: Map<String, Handler> = mapOf(
@@ -319,6 +366,7 @@ class RootController(private val clockService: ClockService,
             "calculator.division" to { b -> b.divide() },
             "weather" to { b -> b.weather() },
             "greetings" to { b -> b.greetings() },
+            "login" to { b -> b.login() },
             "time.get" to { b -> b.clock() },
             "date.get" to { b -> b.calendar() },
             "date.get.period" to { b -> b.calendarPeriod() },
@@ -326,7 +374,8 @@ class RootController(private val clockService: ClockService,
             "tasks.add" to { b -> b.addTask() },
             "tasks.delete" to { b -> b.deleteTask() },
             "events.read" to { b -> b.readEvents() },
-            "events.add" to { b -> b.addEvent() }
+            "events.add.single" to { b -> b.addSingleEvent() },
+            "events.add.quick" to { b -> b.addQuickEvent() }
     )
 
 }

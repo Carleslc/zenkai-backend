@@ -40,7 +40,6 @@ class GoogleApiAuthorization(private val userId: String) {
             return false
         }
         if (isExpired()) {
-            logger.debug("REFRESH TOKEN")
             return Try { credential.refreshToken() }.getOrDefault { false }
         }
         return true
