@@ -14,4 +14,8 @@ interface EventService : Service {
 
     fun createEvent(eventQuery: String): Event
 
+    fun findEvent(title: String): Event?
+
+    fun removeEvent(event: Event)
+
 }

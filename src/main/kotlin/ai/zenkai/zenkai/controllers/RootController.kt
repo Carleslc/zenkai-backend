@@ -251,19 +251,48 @@ class RootController(private val clockService: ClockService,
         }
     }
 
-    fun Bot.deleteTask() = withTrello {
-        val title = getString("task-title")
-        if (title != null) {
-            val previousTasks = getDefaultBoard().getPreviousTasks()
-            val task = previousTasks.find { it.hasSimilarTitle(title) }
-            if (task != null) {
-                getDefaultBoard().archiveTask(task)
-                addMessage(S.TASK_DELETED)
-                addMessage(S.YOUR_TASK)
-                addTask(task)
-            } else {
-                addMessage(S.TASK_NOT_FOUND)
+    private fun Bot.tryDeleteTaskOr(notFoundBlock: Bot.() -> Unit) {
+        withTrello {
+            val title = getString("title")
+            if (title != null) {
+                val previousTasks = getDefaultBoard().getPreviousTasks()
+                val task = previousTasks.find { it.hasSimilarTitle(title) }
+                if (task != null) {
+                    getDefaultBoard().archiveTask(task)
+                    addMessage(S.TASK_DELETED)
+                    addMessage(S.YOUR_TASK)
+                    addTask(task)
+                } else {
+                    notFoundBlock()
+                }
             }
+        }
+    }
+
+    fun Bot.tryDeleteEventOr(notFoundBlock: Bot.() -> Unit) = withCalendar {
+        val title = getString("title")
+        if (title != null) {
+            val event = findEvent(title)
+            if (event != null) {
+                removeEvent(event)
+                addMessage(S.EVENT_DELETED)
+                addMessage(S.YOUR_EVENT)
+                addEvent(event)
+            } else {
+                notFoundBlock()
+            }
+        }
+    }
+
+    fun Bot.deleteTask() = tryDeleteTaskOr {
+        tryDeleteEventOr {
+            addMessage(S.TASK_NOT_FOUND)
+        }
+    }
+
+    fun Bot.deleteEvent() = tryDeleteEventOr {
+        tryDeleteTaskOr {
+            addMessage(S.EVENT_NOT_FOUND)
         }
     }
 
@@ -374,7 +403,8 @@ class RootController(private val clockService: ClockService,
             "events.read" to { b -> b.readEvents() },
             "events.add" to { b -> b.addEvent() },
             "events.add.now" to { b -> b.addEvent(implicitToday = true) },
-            "events.add.quick" to { b -> b.addQuickEvent() }
+            "events.add.quick" to { b -> b.addQuickEvent() },
+            "events.delete" to { b -> b.deleteEvent() }
     )
 
 }

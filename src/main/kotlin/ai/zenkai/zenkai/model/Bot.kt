@@ -28,6 +28,7 @@ import com.google.gson.JsonParser
 import com.tmsdurham.actions.DialogflowApp
 import com.tmsdurham.actions.SimpleResponse
 import main.java.com.tmsdurham.dialogflow.sample.DialogflowAction
+import me.carleslc.kotlin.extensions.standard.isNotNull
 import me.carleslc.kotlin.extensions.standard.isNull
 import me.carleslc.kotlin.extensions.standard.letIf
 import me.carleslc.kotlin.extensions.strings.isNotNullOrBlank
@@ -117,7 +118,7 @@ data class Bot(val language: String,
         auth.clear()
     }
 
-    fun withCalendarAuth(block: GoogleApiAuthorization.() -> Unit) = requireToken(TokenType.TRELLO) {
+    private fun withCalendarAuth(block: GoogleApiAuthorization.() -> Unit) = requireToken(TokenType.TRELLO) {
         val auth = GoogleApiAuthorization(it)
         if (auth.hasValidCredentials()) {
             block(auth)
@@ -132,10 +133,10 @@ data class Bot(val language: String,
             if (!sent) { // calendar listener not called
                 block(calendar)
             }
-        } catch (authError: GoogleJsonResponseException) {
-            if (authError.statusCode == HttpStatus.UNAUTHORIZED.value()) {
+        } catch (e: GoogleJsonResponseException) {
+            if (e.statusCode == HttpStatus.UNAUTHORIZED.value()) {
                 needsLoginCalendar(this)
-            } else HttpClientErrorException(HttpStatus.values().find { it.value() == authError.statusCode }!!)
+            } else throw e
         }
     }
 
@@ -304,6 +305,7 @@ data class Bot(val language: String,
         fun handleRequest(req: HttpServletRequest, res: HttpServletResponse, gson: Gson,
                           intentMapper: Map<String, Handler>, calendarService: CalendarService, clockService: ClockService) {
             val action = DialogflowAction(req, res, gson).app
+            logger.info("Query '${action.query}'")
             var bot: Bot? = null
             try {
                 val intent = action.getIntent()
@@ -324,7 +326,6 @@ data class Bot(val language: String,
                     fillContextTokens(action.request.body.result.resolvedQuery, action, tokens)
                     fillDataTokens(data?.tokens, tokens, language)
                     action.fillUserTokens(tokens)
-                    logger.info("Tokens $tokens")
                     bot = Bot(language, timezone, req.requestURL.toString(), action, tokens, calendarService, clockService, gson)
                     handler(bot)
                     bot.send()
@@ -373,7 +374,6 @@ data class Bot(val language: String,
                 val contextTokens = mutableMapOf<String, Any>()
                 TokenType.values().forEach { contextTokens[it.param] = tokens[it] ?: "" }
                 setContext(USER_CONTEXT, 100, contextTokens)
-                logger.info("Filled User Tokens")
             }
         }
 

@@ -8,6 +8,7 @@ import com.google.api.client.util.DateTime
 import com.google.api.services.calendar.model.*
 import com.google.api.services.calendar.model.Calendar
 import me.carleslc.kotlin.extensions.collections.L
+import me.carleslc.kotlin.extensions.preconditions.requireNotNull
 import me.carleslc.kotlin.extensions.standard.alsoIf
 import me.carleslc.kotlin.extensions.standard.isNotNull
 import me.carleslc.kotlin.extensions.time.toDate
@@ -49,6 +50,20 @@ class CalendarEventService(private val service: GoogleCalendarService,
 
     override fun createEvent(eventQuery: String): Event {
         return service.events().quickAdd(defaultCalendarId, eventQuery).setFields(EVENT_FIELDS).execute().toEvent(timezone)
+    }
+
+    override fun findEvent(title: String): Event? {
+        return service.events().list(defaultCalendarId)
+                    .setQ(title)
+                    .setTimeZone(timezone.id)
+                    .setFields("items($EVENT_FIELDS)")
+                    .execute().items.firstOrNull()?.toEvent(timezone)
+    }
+
+    override fun removeEvent(event: Event) {
+        event.id?.let {
+            service.events().delete(defaultCalendarId, it).execute()
+        }
     }
 
     private fun getEvents(start: LocalDateTime? = null, end: LocalDateTime? = null, maxResults: Int = 0): List<Event> {
