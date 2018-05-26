@@ -40,8 +40,8 @@ data class Task(val title: String,
     fun getSpeech(language: String, zoneId: ZoneId, calendarService: CalendarService) = buildString {
         append(title)
         if (deadline != null) {
-            append(' ').append(i18n[S.DEADLINE_SPEECH, language]).append(' ')
-                    .append(calendarService.prettyApprox(deadline, zoneId, language))
+            append(' ').append(i18n[S.DEADLINE_SPEECH, language])
+            append(' ').append(calendarService.prettyApprox(deadline, zoneId, language))
         }
     }
 

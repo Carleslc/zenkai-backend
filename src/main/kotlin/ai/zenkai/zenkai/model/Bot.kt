@@ -53,6 +53,7 @@ data class Bot(val language: String,
                private val tokens: MutableMap<TokenType, String>,
                private val calendarService: CalendarService,
                private val clockService: ClockService,
+               private val gson: Gson,
                private var error: BotError? = null) : TasksListener, CalendarListener {
 
     private val messages by lazy { mutableListOf<SimpleResponse>() }
@@ -62,6 +63,8 @@ data class Bot(val language: String,
     val locale by lazy { language.toLocale() }
 
     var lastRequiredToken: TokenType? = null
+
+    var sent = false
 
     fun addMessage(textToSpeech: String? = null, displayText: String? = null): Boolean {
         if (textToSpeech.isNotNullOrBlank() || displayText.isNotNullOrBlank()) {
@@ -110,18 +113,18 @@ data class Bot(val language: String,
         block(TrelloTaskService(it, this, timezone))
     }
 
-    fun withCalendar(block: CalendarEventService.() -> Unit) = withTrello {
-        val auth = GoogleApiAuthorization(getMe().email!!)
-        logger.info("GCal Refresh Token: " + auth.refreshToken.isNotNullOrBlank())
-        logger.info("GCal Expiration " + auth.expiration)
+    fun withCalendar(block: CalendarEventService.() -> Unit) = requireToken(TokenType.TRELLO) {
+        val auth = GoogleApiAuthorization(it)
         fun needsLoginCalendar() {
-            needsLogin(S.LOGIN_CALENDAR, auth.getSimpleAuthorizationUrl())
+            needsLogin(S.LOGIN_CALENDAR, auth.getSimpleAuthorizationUrl(gson, language, timezone))
             auth.clear()
         }
         if (auth.hasValidCredentials()) {
-            logger.info("Valid credentials")
             try {
-                block(CalendarEventService(auth.getCalendar()!!, timezone, language, this@Bot))
+                val calendar = CalendarEventService(auth.getCalendar()!!, timezone, language, this@Bot).configure()
+                if (!sent) { // calendar listener not called
+                    block(calendar)
+                }
             } catch (authError: GoogleJsonResponseException) {
                 if (authError.statusCode == HttpStatus.UNAUTHORIZED.value()) {
                     needsLoginCalendar()
@@ -132,8 +135,11 @@ data class Bot(val language: String,
         }
     }
 
-    fun login() = withCalendar {
-        addMessage(S.GREETINGS_LOGGED)
+    fun login() = withTrello {
+        getMe() // test token
+        withCalendar {
+            addMessage(S.GREETINGS_LOGGED)
+        }
     }
 
     fun greetings() {
@@ -171,6 +177,7 @@ data class Bot(val language: String,
     }
 
     private fun send() {
+        if (sent) return
         if (error == null) {
             // TODO: Redirect with followupEvent instead clearing slot filling contexts
             action.completeTokensFilling(tokens)
@@ -182,6 +189,7 @@ data class Bot(val language: String,
                         "timezone" to timezone.id,
                         "tokens" to tokens.map { Token(it.key, it.value) })
                         .apply { if (error != null) this["error"] = error })
+        sent = true
     }
 
     fun getParam(param: String): Any? = action.getArgument(param)
@@ -264,13 +272,15 @@ data class Bot(val language: String,
     operator fun get(id: S): String = i18n[id, language]
 
     override fun onNewBoard(board: Board) {
-        addMessage(get(S.NEW_BOARD))
+        addMessage(S.NEW_BOARD)
         addText(board.shortUrl!!)
     }
 
     override fun onNewCalendar() {
-        addMessage(get(S.NEW_CALENDAR))
-        addText("https://calendar.google.com/calendar/")
+        val message = get(S.NEW_CALENDAR)
+        addMessage(textToSpeech = message.replace("\$url\n", ""),
+                   displayText = message.replace("\$url", "https://calendar.google.com/calendar/"))
+        send()
     }
 
     companion object Parser {
@@ -301,7 +311,7 @@ data class Bot(val language: String,
                     fillDataTokens(data?.tokens, tokens, language)
                     action.fillUserTokens(tokens)
                     logger.info("Tokens $tokens")
-                    bot = Bot(language, timezone, req.requestURL.toString(), action, tokens, calendarService, clockService)
+                    bot = Bot(language, timezone, req.requestURL.toString(), action, tokens, calendarService, clockService, gson)
                     handler(bot)
                     bot.send()
                 }

@@ -14,8 +14,8 @@ import ai.zenkai.zenkai.model.TaskStatus.*
 import ai.zenkai.zenkai.replace
 import ai.zenkai.zenkai.services.calendar.CalendarService
 import ai.zenkai.zenkai.services.calendar.DatePeriod
-import ai.zenkai.zenkai.services.calendar.IMPLICIT_START_OF_DAY_HOUR
 import ai.zenkai.zenkai.services.clock.ClockService
+import ai.zenkai.zenkai.services.clock.isSingleHour
 import ai.zenkai.zenkai.services.events.Event
 import ai.zenkai.zenkai.services.weather.WeatherService
 import com.google.gson.Gson
@@ -103,8 +103,8 @@ class RootController(private val clockService: ClockService,
 
     fun Bot.clock() {
         val time = clockService.now(timezone)
-        val prefix = get(if (time.hour == 1 || time.hour == 13) S.CURRENT_TIME_SINGLE else S.CURRENT_TIME)
-        val formattedTime = clockService.format(time, language)
+        val prefix = get(if (time.isSingleHour()) S.CURRENT_TIME_SINGLE else S.CURRENT_TIME)
+        val formattedTime = clockService.pretty12(time, language)
         val speech = "${prefix.capitalize()} $formattedTime".trim()
         addMessage(speech, formattedTime)
     }
@@ -272,7 +272,7 @@ class RootController(private val clockService: ClockService,
         val events = if (date != null) {
             readEvents(date)
         } else {
-            readFollowingEvents(5)
+            readFollowingEvents(5, maxDate = ZonedDateTime.now(timezone).plusWeeks(1).toLocalDateTime())
         }
         val messageId = if (date.isNotNull()) {
             when {
@@ -293,9 +293,11 @@ class RootController(private val clockService: ClockService,
         events.forEach { addEvent(it) }
     }
 
-    fun Bot.addSingleEvent() = withCalendar {
+    private fun Bot.addEvent(implicitToday: Boolean = false) = withCalendar {
+        val now = ZonedDateTime.now(timezone)!!
         val title = getString("event-title")
-        var start = getDateTime("start-date", "start-time")?.atZone(timezone)
+        var start = getDateTime("start-date", "start-time",
+                defaultTime = if (implicitToday) clockService.now(timezone) else null)?.atZone(timezone)
         var end = getDateTime("end-date", "end-time", defaultDate = start?.toLocalDate())?.atZone(timezone)
         val startOriginal = getString("start-date-original")
         val endOriginal = getString("end-date-original")
@@ -304,7 +306,6 @@ class RootController(private val clockService: ClockService,
         logger.info("Start: $start (Original $startOriginal)")
         logger.info("End:   $end (Original $endOriginal)")
         if (title != null && start != null && end != null) {
-            val now = ZonedDateTime.now(timezone)!!
             start = calendarService.implicitTime(now, start, startOriginal, language, timezone)
             end = calendarService.implicitTime(now, end, endOriginal, language, timezone)
             if (start.toLocalDate().month != end.toLocalDate().month) {
@@ -335,13 +336,10 @@ class RootController(private val clockService: ClockService,
                 end = start.toLocalDate().atTime(end.toLocalTime()).atZone(timezone)!!
             }
             if (end <= start) {
-                logger.info("End Time <= Start Time")
-                if (endOriginal != null) {
-                    logger.info("Shifted end time")
-                    end = end.plusHours(12)!!
-                }
+                logger.info("End Time <= Start Time, Shift 12h")
+                end = end.plusHours(12)!!
             }
-            if (endOriginal == null) {
+            if (getTime("end-time") == null) {
                 logger.info("end-time not specified -> end = start + 1h")
                 end = start.toLocalDate().atTime(start.toLocalTime()).plusHours(1).atZone(timezone)!!
             }
@@ -374,7 +372,8 @@ class RootController(private val clockService: ClockService,
             "tasks.add" to { b -> b.addTask() },
             "tasks.delete" to { b -> b.deleteTask() },
             "events.read" to { b -> b.readEvents() },
-            "events.add.single" to { b -> b.addSingleEvent() },
+            "events.add" to { b -> b.addEvent() },
+            "events.add.now" to { b -> b.addEvent(implicitToday = true) },
             "events.add.quick" to { b -> b.addQuickEvent() }
     )
 

@@ -10,7 +10,7 @@ object i18n : Set<String> by linkedSetOf(DEFAULT_LANGUAGE, "es") {
     private val DEFAULT_BUNDLE by lazy { languageBundles[DEFAULT_LANGUAGE]!! }
 
     private val supportedLocales by lazy {
-        arrayOf("en", "es").map {
+        map {
             val locale = Locale(it)
             locale.language to locale
         }.toMap()
@@ -31,6 +31,11 @@ object i18n : Set<String> by linkedSetOf(DEFAULT_LANGUAGE, "es") {
     }
 
     fun getNonTranslatable(id: S) = get(id, DEFAULT_LANGUAGE)
+
+    fun ensureLanguage(language: String): String {
+        val lang = language.toLowerCase()
+        return if (lang in this) lang else DEFAULT_LANGUAGE
+    }
 
 }
 
@@ -115,7 +120,10 @@ enum class S {
     MINUTES,
     SECOND,
     SECONDS,
-    DURATION;
+    DURATION,
+    NOW,
+    UNTIL,
+    UNTIL_SINGLE;
 }
 
 fun StringBuilder.append(id: S, locale: String) = append(i18n[id, locale])

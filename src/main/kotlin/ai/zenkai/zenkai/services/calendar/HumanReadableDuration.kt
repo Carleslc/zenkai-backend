@@ -6,7 +6,7 @@ import java.time.temporal.ChronoUnit
 import java.time.temporal.Temporal
 import java.time.temporal.TemporalUnit
 
-class HumanReadableDuration(val start: Temporal, val end: Temporal, val language: String) {
+class HumanReadableDuration(val start: Temporal, val end: Temporal, val language: String, val precision: TemporalUnit = ChronoUnit.SECONDS) {
 
     private val formattedDuration by lazy { format() }
 
@@ -16,7 +16,7 @@ class HumanReadableDuration(val start: Temporal, val end: Temporal, val language
 
         fun StringBuilder.addTime(unit: TemporalUnit, td1: String, td: String) {
             val time = date.until(end, unit)
-            if (time > 0) {
+            if (time > 0 && precision.duration.seconds <= unit.duration.seconds) {
                 if (!first) append(", ")
                 append(time.toString()).append(' ').append(if (time == 1L) td1 else td)
                 date = date.plus(time, unit)

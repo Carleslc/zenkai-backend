@@ -14,26 +14,16 @@ import com.google.api.client.http.HttpTransport
 import com.google.api.client.json.jackson2.JacksonFactory
 import com.google.api.services.calendar.Calendar
 import com.google.api.services.calendar.CalendarScopes
-import me.carleslc.kotlin.extensions.standard.isNotNull
-import me.carleslc.kotlin.extensions.standard.isNull
-import org.slf4j.LoggerFactory
+import com.google.gson.Gson
 import java.io.InputStreamReader
-import java.time.Instant
+import java.time.ZoneId
 import java.util.*
 
 class GoogleApiAuthorization(private val userId: String) {
 
-    private val logger = LoggerFactory.getLogger(this::class.java)
-
     private val flow by lazy { newFlow() }
 
     private val credential by lazy { flow.loadCredential(userId) }
-
-    val refreshToken
-        get() = credential?.refreshToken
-
-    val expiration
-        get() = if (credential?.accessToken.isNull()) Date.from(Instant.EPOCH) else Date(credential.expirationTimeMilliseconds)
 
     fun hasValidCredentials(): Boolean {
         if (credential?.accessToken == null) {
@@ -57,14 +47,14 @@ class GoogleApiAuthorization(private val userId: String) {
         } else null
     }
 
-    fun getSimpleAuthorizationUrl(): String {
+    fun getSimpleAuthorizationUrl(gson: Gson, language: String, timezone: ZoneId): String {
         val url = GenericUrl(SERVER).apply { rawPath = GoogleApiAuthorizationController.URL }.build()
-        return "$url?userId=${Base64.getEncoder().encodeToString(userId.toByteArray())}"
+        return "$url?u=${UserConfiguration(userId, language, timezone.id).encode(gson)}"
     }
 
-    fun getAuthorizationUrl() = flow.newAuthorizationUrl().apply {
+    fun getAuthorizationUrl(currentState: String) = flow.newAuthorizationUrl().apply {
         redirectUri = buildRedirectUri()
-        state = Base64.getEncoder().encodeToString(userId.toByteArray())
+        state = currentState
     }.build()!!
 
     private fun buildRedirectUri() = GenericUrl(SERVER).apply { rawPath = GoogleApiAuthorizationController.URL }.build()!!

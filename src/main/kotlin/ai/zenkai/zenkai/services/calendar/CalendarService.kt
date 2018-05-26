@@ -4,7 +4,6 @@ import ai.zenkai.zenkai.cleanFormat
 import ai.zenkai.zenkai.i18n.S
 import ai.zenkai.zenkai.i18n.i18n
 import ai.zenkai.zenkai.i18n.toLocale
-import ai.zenkai.zenkai.model.Bot.Parser.logger
 import ai.zenkai.zenkai.services.clock.ClockService
 import ai.zenkai.zenkai.words
 import org.ocpsoft.prettytime.PrettyTime
@@ -137,6 +136,15 @@ fun LocalDate.atStartOfWeek(): LocalDate {
 fun LocalDate.atEndOfWeek(): LocalDate {
     val offset = (DayOfWeek.SUNDAY.value - dayOfWeek.value).toLong()
     return plusDays(offset)
+}
+
+fun LocalDateTime?.shiftToday(zoneId: ZoneId): ZonedDateTime {
+    val now = ZonedDateTime.now(zoneId)
+    var dateTime: ZonedDateTime = this?.atZone(zoneId) ?: now
+    if (dateTime.toLocalDate() == now.toLocalDate() && dateTime.toLocalTime() < now.toLocalTime()) {
+        dateTime = now
+    }
+    return dateTime
 }
 
 fun ZonedDateTime.withOffset(zoneId: ZoneId = zone): ZonedDateTime = toLocalDateTime().withOffset(zoneId)
