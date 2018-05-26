@@ -49,7 +49,7 @@ class GoogleApiAuthorization(private val userId: String) {
 
     fun getSimpleAuthorizationUrl(gson: Gson, language: String, timezone: ZoneId): String {
         val url = GenericUrl(SERVER).apply { rawPath = GoogleApiAuthorizationController.URL }.build()
-        return "$url?u=${UserConfiguration(userId, language, timezone.id).encode(gson)}"
+        return "$url?state=${UserConfiguration(userId, language, timezone.id).encode(gson)}"
     }
 
     fun getAuthorizationUrl(currentState: String) = flow.newAuthorizationUrl().apply {

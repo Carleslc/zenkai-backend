@@ -100,7 +100,6 @@ data class Bot(val language: String,
 
     fun addEvent(event: Event) {
         with(event) {
-            logger.info("Add event message: $event")
             addMessage(event.getSpeech(language, calendarService), event.getDisplayText(language, calendarService))
         }
     }
@@ -113,33 +112,47 @@ data class Bot(val language: String,
         block(TrelloTaskService(it, this, timezone))
     }
 
-    fun withCalendar(block: CalendarEventService.() -> Unit) = requireToken(TokenType.TRELLO) {
+    private fun needsLoginCalendar(auth: GoogleApiAuthorization) {
+        needsLogin(S.LOGIN_CALENDAR, auth.getSimpleAuthorizationUrl(gson, language, timezone))
+        auth.clear()
+    }
+
+    fun withCalendarAuth(block: GoogleApiAuthorization.() -> Unit) = requireToken(TokenType.TRELLO) {
         val auth = GoogleApiAuthorization(it)
-        fun needsLoginCalendar() {
-            needsLogin(S.LOGIN_CALENDAR, auth.getSimpleAuthorizationUrl(gson, language, timezone))
-            auth.clear()
-        }
         if (auth.hasValidCredentials()) {
-            try {
-                val calendar = CalendarEventService(auth.getCalendar()!!, timezone, language, this@Bot).configure()
-                if (!sent) { // calendar listener not called
-                    block(calendar)
-                }
-            } catch (authError: GoogleJsonResponseException) {
-                if (authError.statusCode == HttpStatus.UNAUTHORIZED.value()) {
-                    needsLoginCalendar()
-                } else HttpClientErrorException(HttpStatus.values().find { it.value() == authError.statusCode }!!)
-            }
+            block(auth)
         } else {
-            needsLoginCalendar()
+            needsLoginCalendar(auth)
+        }
+    }
+
+    fun withCalendar(block: CalendarEventService.() -> Unit) = withCalendarAuth {
+        try {
+            val calendar = CalendarEventService(getCalendar()!!, timezone, language, this@Bot).configure()
+            if (!sent) { // calendar listener not called
+                block(calendar)
+            }
+        } catch (authError: GoogleJsonResponseException) {
+            if (authError.statusCode == HttpStatus.UNAUTHORIZED.value()) {
+                needsLoginCalendar(this)
+            } else HttpClientErrorException(HttpStatus.values().find { it.value() == authError.statusCode }!!)
         }
     }
 
     fun login() = withTrello {
-        getMe() // test token
-        withCalendar {
-            addMessage(S.GREETINGS_LOGGED)
+        loginIfTokenSuccess(true)
+    }
+
+    private fun loginIfTokenSuccess(success: Boolean) {
+        withCalendarAuth {
+            if (success) {
+                addMessage(S.GREETINGS_LOGGED)
+            } else {
+                needsLogin()
+                clear()
+            }
         }
+        send()
     }
 
     fun greetings() {
@@ -158,6 +171,7 @@ data class Bot(val language: String,
     }
 
     fun needsLogin(type: TokenType = lastRequiredToken!!) {
+        logger.info("Needs login $type")
         val id = when (type) {
             TokenType.TRELLO -> S.LOGIN_TASKS
             TokenType.TOGGL -> S.LOGIN_TIMER
@@ -319,7 +333,7 @@ data class Bot(val language: String,
                 action.badRequest(e)
             } catch (e: HttpClientErrorException) {
                 if (bot != null && e.statusCode == HttpStatus.UNAUTHORIZED) {
-                    bot.needsLogin()
+                    bot.loginIfTokenSuccess(false)
                 } else action.serviceUnavailable(e)
             } catch (e: Exception) {
                 action.serviceUnavailable(e)
@@ -444,7 +458,7 @@ private fun DialogflowApp.serviceUnavailable(e: Exception) {
 private fun DialogflowApp.fillAndSend(speech: String?, data: Map<String, Any>) {
     data { this["zenkai"] = data }
     val textToSpeech = speech.orEmpty()
-    logger.info("Send '$textToSpeech' with data $data")
+    logger.info("Send '$textToSpeech' with ${(data["messages"] as? List<*>)?.size} messages")
     tell(textToSpeech)
 }
 
