@@ -324,6 +324,7 @@ class RootController(private val clockService: ClockService,
 
     private fun Bot.addEvent(implicitToday: Boolean = false) = withCalendar {
         val now = ZonedDateTime.now(timezone)!!
+        logger.info("Now: $now")
         val title = getString("event-title")
         var start = getDateTime("start-date", "start-time",
                 defaultTime = if (implicitToday) clockService.now(timezone) else null)?.atZone(timezone)

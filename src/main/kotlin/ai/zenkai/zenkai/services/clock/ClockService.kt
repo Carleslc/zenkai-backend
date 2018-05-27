@@ -18,7 +18,7 @@ class ClockService {
     private val formatter12 by lazy { DateTimeFormatter.ofPattern("h:mm a") }
     private val formatter24 by lazy { DateTimeFormatter.ofPattern("H:mm") }
 
-    fun now(timezone: ZoneId): LocalTime = LocalTime.now(timezone)
+    fun now(timezone: ZoneId = DEFAULT_TIME_ZONE): LocalTime = LocalTime.now(timezone)
 
     fun parse(time: String): LocalTime = LocalTime.parse(time)
 

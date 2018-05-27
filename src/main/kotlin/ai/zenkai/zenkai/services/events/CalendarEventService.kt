@@ -135,7 +135,7 @@ class CalendarEventService(private val service: GoogleCalendarService,
 
 private fun CalendarListEntry.isDefaultCalendar() = summary.equals(CalendarEventService.DEFAULT_CALENDAR_NAME, true)
 
-private fun LocalDateTime.toDateTime(zoneId: ZoneId) = DateTime(toDate(), TimeZone.getTimeZone(zoneId))
+private fun LocalDateTime.toDateTime(zoneId: ZoneId) = DateTime(toDate(zoneId), TimeZone.getTimeZone(zoneId))
 
 private fun ZonedDateTime.toDateTime() = toLocalDateTime().toDateTime(zone)
 
