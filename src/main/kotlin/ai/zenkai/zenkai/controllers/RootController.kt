@@ -6,18 +6,15 @@ import ai.zenkai.zenkai.exceptions.badRequest
 import ai.zenkai.zenkai.exceptions.multicatch
 import ai.zenkai.zenkai.fixInt
 import ai.zenkai.zenkai.i18n.S
-import ai.zenkai.zenkai.model.Bot
-import ai.zenkai.zenkai.model.Handler
-import ai.zenkai.zenkai.model.Task
-import ai.zenkai.zenkai.model.TaskStatus
+import ai.zenkai.zenkai.model.*
 import ai.zenkai.zenkai.model.TaskStatus.*
 import ai.zenkai.zenkai.replace
 import ai.zenkai.zenkai.services.calendar.CalendarService
 import ai.zenkai.zenkai.services.calendar.DatePeriod
 import ai.zenkai.zenkai.services.clock.ClockService
 import ai.zenkai.zenkai.services.clock.isSingleHour
-import ai.zenkai.zenkai.model.Event
 import ai.zenkai.zenkai.services.weather.WeatherService
+import com.google.api.client.googleapis.json.GoogleJsonResponseException
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
 import me.carleslc.kotlin.extensions.html.h
@@ -382,9 +379,13 @@ class RootController(private val clockService: ClockService,
     }
 
     fun Bot.addQuickEvent() = withCalendar {
-        val event = createEvent(query)
-        addMessages(S.ADDED_EVENT, S.YOUR_EVENT)
-        addEvent(event)
+        try {
+            val event = createEvent(query)
+            addMessages(S.ADDED_EVENT, S.YOUR_EVENT)
+            addEvent(event)
+        } catch (e: GoogleJsonResponseException) {
+            addMessage(S.CANNOT_ADD_EVENT)
+        }
     }
 
     val actionMap: Map<String, Handler> = mapOf(
