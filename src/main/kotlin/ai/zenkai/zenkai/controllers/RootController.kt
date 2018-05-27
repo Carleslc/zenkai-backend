@@ -16,7 +16,7 @@ import ai.zenkai.zenkai.services.calendar.CalendarService
 import ai.zenkai.zenkai.services.calendar.DatePeriod
 import ai.zenkai.zenkai.services.clock.ClockService
 import ai.zenkai.zenkai.services.clock.isSingleHour
-import ai.zenkai.zenkai.services.events.Event
+import ai.zenkai.zenkai.model.Event
 import ai.zenkai.zenkai.services.weather.WeatherService
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
@@ -255,7 +255,7 @@ class RootController(private val clockService: ClockService,
         withTrello {
             val title = getString("title")
             if (title != null) {
-                val previousTasks = getDefaultBoard().getPreviousTasks()
+                val previousTasks = getDefaultBoard().getPreviousTasks(comparator=compareBy<Task> { it.title.length })
                 val task = previousTasks.find { it.hasSimilarTitle(title) }
                 if (task != null) {
                     getDefaultBoard().archiveTask(task)

@@ -2,13 +2,13 @@ package ai.zenkai.zenkai.services.events
 
 import ai.zenkai.zenkai.i18n.S
 import ai.zenkai.zenkai.i18n.i18n
+import ai.zenkai.zenkai.model.Event
 import ai.zenkai.zenkai.services.calendar.shiftToday
 import ai.zenkai.zenkai.services.calendar.withOffset
 import com.google.api.client.util.DateTime
 import com.google.api.services.calendar.model.*
 import com.google.api.services.calendar.model.Calendar
 import me.carleslc.kotlin.extensions.collections.L
-import me.carleslc.kotlin.extensions.preconditions.requireNotNull
 import me.carleslc.kotlin.extensions.standard.alsoIf
 import me.carleslc.kotlin.extensions.standard.isNotNull
 import me.carleslc.kotlin.extensions.time.toDate

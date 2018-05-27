@@ -16,7 +16,6 @@ import ai.zenkai.zenkai.services.clock.DEFAULT_TIME_ZONE
 import ai.zenkai.zenkai.services.clock.toZoneIdOrThrow
 import ai.zenkai.zenkai.services.events.CalendarEventService
 import ai.zenkai.zenkai.services.events.CalendarListener
-import ai.zenkai.zenkai.services.events.Event
 import ai.zenkai.zenkai.services.tasks.TasksListener
 import ai.zenkai.zenkai.services.tasks.TrelloTaskService
 import ai.zenkai.zenkai.services.tasks.trello.Board
@@ -28,7 +27,6 @@ import com.google.gson.JsonParser
 import com.tmsdurham.actions.DialogflowApp
 import com.tmsdurham.actions.SimpleResponse
 import main.java.com.tmsdurham.dialogflow.sample.DialogflowAction
-import me.carleslc.kotlin.extensions.standard.isNotNull
 import me.carleslc.kotlin.extensions.standard.isNull
 import me.carleslc.kotlin.extensions.standard.letIf
 import me.carleslc.kotlin.extensions.strings.isNotNullOrBlank

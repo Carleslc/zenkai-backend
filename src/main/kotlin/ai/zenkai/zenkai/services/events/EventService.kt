@@ -1,5 +1,6 @@
 package ai.zenkai.zenkai.services.events
 
+import ai.zenkai.zenkai.model.Event
 import ai.zenkai.zenkai.services.Service
 import java.time.LocalDate
 import java.time.LocalDateTime

@@ -7,9 +7,9 @@ import ai.zenkai.zenkai.services.tasks.trello.Board
 
 interface TaskService : Service {
 
-    fun Board.getReadableTasks(status: TaskStatus): List<Task>
+    fun Board.getReadableTasks(status: TaskStatus, comparator: Comparator<Task>? = Task.priorityComparator()): List<Task>
 
-    fun Board.getPreviousTasks(status: TaskStatus = TaskStatus.DONE): List<Task>
+    fun Board.getPreviousTasks(status: TaskStatus = TaskStatus.DONE, comparator: Comparator<Task>? = Task.statusComparator()): List<Task>
 
     fun Board.addTask(task: Task): Task
 

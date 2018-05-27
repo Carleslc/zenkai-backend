@@ -1,5 +1,6 @@
 package ai.zenkai.zenkai.services.events
 
+import ai.zenkai.zenkai.model.Event
 import com.google.api.client.googleapis.batch.json.JsonBatchCallback
 import com.google.api.client.googleapis.json.GoogleJsonError
 import com.google.api.client.http.HttpHeaders

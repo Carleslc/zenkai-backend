@@ -10,6 +10,7 @@ import ai.zenkai.zenkai.model.Task
 import ai.zenkai.zenkai.model.TaskStatus
 import ai.zenkai.zenkai.services.parameters
 import ai.zenkai.zenkai.services.tasks.trello.*
+import me.carleslc.kotlin.extensions.standard.letOrElse
 import org.slf4j.LoggerFactory
 import java.time.ZoneId
 
@@ -31,16 +32,16 @@ class TrelloTaskService(private val accessToken: String,
 
     private val statusLists = mutableMapOf<TaskStatus, TrelloList>()
 
-    override fun Board.getReadableTasks(status: TaskStatus): List<Task> {
-        return getTasks(status.getReadableListNames(language), Task.priorityComparator())
+    override fun Board.getReadableTasks(status: TaskStatus, comparator: Comparator<Task>?): List<Task> {
+        return getTasks(status.getReadableListNames(language), comparator)
     }
 
-    override fun Board.getPreviousTasks(status: TaskStatus): List<Task> {
-        return getTasks(status.getPreviousListNames(language), Task.statusComparator())
+    override fun Board.getPreviousTasks(status: TaskStatus, comparator: Comparator<Task>?): List<Task> {
+        return getTasks(status.getPreviousListNames(language), comparator)
     }
 
     /** Sorted tasks (closer deadline first, in other case prevails Trello board list order) **/
-    private fun Board.getTasks(listNames: Map<String, TaskStatus>, comparator: Comparator<Task>): List<Task> {
+    private fun Board.getTasks(listNames: Map<String, TaskStatus>, comparator: Comparator<Task>?): List<Task> {
         val selectedLists = board.getLists(listsWithCards()).filter(listNames)
         val tasks = mutableListOf<Task>()
         selectedLists.forEach {
@@ -48,7 +49,7 @@ class TrelloTaskService(private val accessToken: String,
             statusLists[listStatus] = it
             tasks.addAll(it.cards!!.map { it.toTask(listStatus) })
         }
-        return tasks.sortedWith(comparator)
+        return comparator.letOrElse(tasks) { tasks.sortedWith(it) }
     }
 
     override fun Board.addTask(task: Task): Task {
