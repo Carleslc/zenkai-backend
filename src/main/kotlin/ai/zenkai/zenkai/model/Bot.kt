@@ -53,7 +53,8 @@ data class Bot(val language: String,
                private val calendarService: CalendarService,
                private val clockService: ClockService,
                private val gson: Gson,
-               private var error: BotError? = null) : TasksListener, CalendarListener {
+               private var error: BotError? = null,
+               private var onNeedLogin: () -> Unit = {}) : TasksListener, CalendarListener {
 
     private val messages by lazy { mutableListOf<SimpleResponse>() }
 
@@ -144,9 +145,7 @@ data class Bot(val language: String,
 
     private fun loginIfTokenSuccess(success: Boolean) {
         withCalendarAuth {
-            if (success) {
-                addMessage(S.GREETINGS_LOGGED)
-            } else {
+            if (!success) {
                 needsLogin()
                 clear()
             }
@@ -155,7 +154,7 @@ data class Bot(val language: String,
     }
 
     fun greetings() {
-        addMessage(S.GREETINGS)
+        onNeedLogin = { addMessage(S.GREETINGS) }
         login()
     }
 
@@ -170,6 +169,7 @@ data class Bot(val language: String,
     }
 
     fun needsLogin(type: TokenType = lastRequiredToken!!) {
+        onNeedLogin()
         logger.info("Needs login $type")
         val id = when (type) {
             TokenType.TRELLO -> S.LOGIN_TASKS
@@ -185,6 +185,7 @@ data class Bot(val language: String,
     }
 
     fun needsLogin(id: S, authUrl: String) {
+        onNeedLogin()
         addMessage(id)
         addText(authUrl)
     }

@@ -324,6 +324,7 @@ class RootController(private val clockService: ClockService,
         logger.info("Now: $now")
         val title = getString("event-title")
         var start = getDateTime("start-date", "start-time",
+                defaultDate = if (implicitToday) calendarService.today(timezone) else null,
                 defaultTime = if (implicitToday) clockService.now(timezone) else null)?.atZone(timezone)
         var end = getDateTime("end-date", "end-time", defaultDate = start?.toLocalDate())?.atZone(timezone)
         val startOriginal = getString("start-date-original")

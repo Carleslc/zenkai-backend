@@ -66,7 +66,7 @@ class CalendarEventService(private val service: GoogleCalendarService,
         }
     }
 
-    private fun getEvents(start: LocalDateTime? = null, end: LocalDateTime? = null, maxResults: Int = 0): List<Event> {
+    private fun getEvents(start: LocalDateTime? = null, end: LocalDateTime? = null, maxResults: Int? = null): List<Event> {
         val batch = service.batch()
         val merge = BatchEvents(timezone)
         calendars.forEach {
@@ -76,11 +76,10 @@ class CalendarEventService(private val service: GoogleCalendarService,
                 .setOrderBy("startTime")
                 .setSingleEvents(true)
                 .alsoIf({ end.isNotNull() }) { it.timeMax = end!!.toDateTime(timezone) }
-                .alsoIf({ maxResults > 0 }) { it.maxResults = maxResults }
+                .alsoIf({ maxResults.isNotNull() }) { it.maxResults = maxResults }
                 .setFields("items($EVENT_FIELDS)")
                 .queue(batch, merge)
         }
-        logger.info("Batch getEvents")
         batch.execute()
         return merge.sorted(maxResults) { it.start }
     }

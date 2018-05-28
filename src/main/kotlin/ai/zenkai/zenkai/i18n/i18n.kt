@@ -50,7 +50,6 @@ enum class S {
     AT,
     AND,
     GREETINGS,
-    GREETINGS_LOGGED,
     LOGIN_TASKS,
     LOGIN_CALENDAR,
     LOGIN_TIMER,
