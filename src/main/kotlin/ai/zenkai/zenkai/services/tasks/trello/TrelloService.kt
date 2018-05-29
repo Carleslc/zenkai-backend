@@ -28,7 +28,7 @@ interface TrelloService : Service {
 
     fun newCard(listId: String, name: String, due: ZonedDateTime? = null, params: Parameters = parameters()): Card
 
-    fun moveCard(cardId: String, listId: String)
+    fun moveCard(cardId: String, listId: String, params: Parameters = parameters())
 
     fun archiveCard(cardId: String)
 

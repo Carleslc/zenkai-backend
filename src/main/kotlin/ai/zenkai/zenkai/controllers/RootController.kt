@@ -11,8 +11,10 @@ import ai.zenkai.zenkai.model.TaskStatus.*
 import ai.zenkai.zenkai.replace
 import ai.zenkai.zenkai.services.calendar.CalendarService
 import ai.zenkai.zenkai.services.calendar.DatePeriod
+import ai.zenkai.zenkai.services.calendar.shiftTime
 import ai.zenkai.zenkai.services.clock.ClockService
 import ai.zenkai.zenkai.services.clock.isSingleHour
+import ai.zenkai.zenkai.services.tasks.TrelloTaskService
 import ai.zenkai.zenkai.services.weather.WeatherService
 import com.google.api.client.googleapis.json.GoogleJsonResponseException
 import com.google.gson.Gson
@@ -113,7 +115,7 @@ class RootController(private val clockService: ClockService,
         val original = getString("period-original")?.toLowerCase(locale).orEmpty()
 
         val date = calendarService.inPeriod(dayOfWeek ?: today.dayOfWeek,
-                period ?: DatePeriod.default(calendarService), today)
+                period ?: DatePeriod.default(calendarService, timezone), today)
 
         val format = if (dayOfWeek.isNull()) {
             calendarService.prettyDate(date, language)
@@ -167,50 +169,56 @@ class RootController(private val clockService: ClockService,
         addMessage("${original.clean().capitalize()} ${isOrWas(date)} $format")
     }
 
+    private fun Bot.addTaskMessage(status: TaskStatus, size: Int) {
+        val messageId = when (status) {
+            DONE -> when {
+                size == 0 -> S.EMPTY_DONE
+                size == 1 -> S.COMPLETED_FIRST_TASK
+                size < 5 -> S.COMPLETED_TASKS
+                size < 20 -> S.COMPLETED_TASKS_CONGRATULATIONS
+                else -> S.COMPLETED_TASKS_KEEP_IT_UP
+            }
+            DOING -> when (size) {
+                0 -> S.EMPTY_DOING
+                1 -> S.DOING_TASK
+                else -> S.MULTITASKING
+            }
+            TODO -> when (size) {
+                0 -> S.EMPTY_TODO
+                1 -> S.TODO_SINGLE
+                else -> S.TODO_FOCUS
+            }
+            SOMEDAY -> when (size) {
+                0 -> S.EMPTY_SOMEDAY
+                1 -> S.SOMEDAY_SINGLE
+                else -> S.SOMEDAY_TASKS
+            }
+        }
+        addMessage(get(messageId).replace("\$size", size.toString()))
+    }
+
+    private fun Bot.checkSomedayWarning(todoTasksSize: Int, somedayTasksSize: () -> Int) {
+        if (todoTasksSize > 10 && somedayTasksSize() == 0) {
+            addMessage(S.EMPTY_SOMEDAY)
+        }
+    }
+
+    private fun Bot.checkMultitasking(doingTasksSize: Int) {
+        if (doingTasksSize > 1) {
+            addMessage(get(S.MULTITASKING).replace("\$size", doingTasksSize.toString()))
+        }
+    }
+
     fun Bot.readTasks() = withTrello {
         val taskType = getString("task-type")
         logger.info("Task Type $taskType")
         val status = TaskStatus.parse(taskType)
-        with (getDefaultBoard().getReadableTasks(status)) {
-            var statusMessageId: S? = null
-            when (status) {
-                DONE -> statusMessageId = when {
-                    isEmpty() -> S.EMPTY_DONE
-                    size == 1 -> S.COMPLETED_FIRST_TASK
-                    size < 5 -> S.COMPLETED_TASKS
-                    size < 20 -> S.COMPLETED_TASKS_CONGRATULATIONS
-                    else -> S.COMPLETED_TASKS_KEEP_IT_UP
-                }
-                DOING -> {
-                    statusMessageId = when {
-                        isEmpty() -> S.EMPTY_DOING
-                        size == 1 -> S.DOING_TASK
-                        else -> S.MULTITASKING
-                    }
-                }
-                TODO -> {
-                    statusMessageId = when {
-                        isEmpty() -> S.EMPTY_TODO
-                        size == 1 -> S.TODO_SINGLE
-                        else -> S.TODO_FOCUS
-                    }
-                }
-                SOMEDAY -> {
-                    statusMessageId = when {
-                        isEmpty() -> S.EMPTY_SOMEDAY
-                        size == 1 -> S.SOMEDAY_SINGLE
-                        else -> S.SOMEDAY_TASKS
-                    }
-                }
-            }
-            addMessage(get(statusMessageId).replace("\$size", size.toString()))
+        with (getDefaultBoard().getReadableTasks(status, Task.statusComparator())) {
+            addTaskMessage(status, size)
             if (status == TODO) {
-                val doingTasks = count { it.status == DOING }
-                if (doingTasks > 1) {
-                    addMessage(get(S.MULTITASKING).replace("\$size", doingTasks.toString()))
-                } else if (size > 10 && getDefaultBoard().getReadableTasks(SOMEDAY).isEmpty()) {
-                    addMessage(S.EMPTY_SOMEDAY)
-                }
+                val doingTasksSize = count { it.status == DOING }
+                checkMultitasking(doingTasksSize)
+                checkSomedayWarning(size - doingTasksSize, { getDefaultBoard().getReadableTasks(SOMEDAY).size })
             }
             if (isNotEmpty()) {
                 addMessage(get(if (size == 1) S.YOUR_TASK else S.YOUR_TASKS))
@@ -228,13 +236,14 @@ class RootController(private val clockService: ClockService,
             val description = query
             var task = Task(title.capitalize(), description, status, deadline)
             val messageId: S
-            val previousTasks = getDefaultBoard().getPreviousTasks(status)
-            val matchTask = previousTasks.find { it.isSimilar(task) }
+            val tasks = getDefaultBoard().getAllTasks(null)
+            val matchTask = tasks.find { it.isSimilar(task) }
+            val alreadyAdded = matchTask?.status == status
             if (matchTask != null) {
-                task = matchTask
-                messageId = if (matchTask.status == status) {
+                messageId = if (alreadyAdded) {
                     S.ALREADY_ADDED
                 } else {
+                    task = matchTask
                     getDefaultBoard().moveTask(task, status)
                     S.MOVED_TASK
                 }
@@ -243,33 +252,43 @@ class RootController(private val clockService: ClockService,
                 messageId = S.ADDED_TASK
             }
             addMessage(get(messageId).replace("\$type", status.getListName(language)))
+            if (!alreadyAdded) {
+                if (status == TODO) {
+                    checkSomedayWarning(1 + tasks.count { it.status == TODO }, { tasks.count { it.status == SOMEDAY } })
+                } else if (status == DOING) {
+                    checkMultitasking(1 + tasks.count { it.status == DOING })
+                } else if (status == DONE) {
+                    val doneTasksSize = 1 + tasks.count { it.status == DONE }
+                    if (doneTasksSize == 1 || doneTasksSize % 5 == 0) {
+                        addTaskMessage(DONE, doneTasksSize)
+                    }
+                }
+            }
             addMessage(S.YOUR_TASK)
             addTask(task)
         }
     }
 
-    private fun Bot.tryDeleteTaskOr(notFoundBlock: Bot.() -> Unit) {
-        withTrello {
-            val title = getString("title")
-            if (title != null) {
-                val previousTasks = getDefaultBoard().getPreviousTasks(comparator=compareBy<Task> { it.title.length })
-                val task = previousTasks.find { it.hasSimilarTitle(title) }
-                if (task != null) {
-                    getDefaultBoard().archiveTask(task)
-                    addMessage(S.TASK_DELETED)
-                    addMessage(S.YOUR_TASK)
-                    addTask(task)
-                } else {
-                    notFoundBlock()
-                }
+    private fun Bot.tryDeleteTaskOr(notFoundBlock: Bot.() -> Unit) = withTrello {
+        val title = getString("title")
+        if (title != null) {
+            val tasks = getDefaultBoard().getAllTasks(comparator=compareBy<Task> { it.title.length })
+            val task = tasks.find { it.hasSimilarTitle(title) }
+            if (task != null) {
+                getDefaultBoard().archiveTask(task)
+                addMessage(S.TASK_DELETED)
+                addMessage(S.YOUR_TASK)
+                addTask(task)
+            } else {
+                notFoundBlock()
             }
         }
     }
 
-    fun Bot.tryDeleteEventOr(notFoundBlock: Bot.() -> Unit) = withCalendar {
+    private fun Bot.tryDeleteEventOr(notFoundBlock: Bot.() -> Unit) = withCalendar {
         val title = getString("title")
         if (title != null) {
-            val event = findEvent(title)
+            val event = findEvent(title.capitalize())
             if (event != null) {
                 removeEvent(event)
                 addMessage(S.EVENT_DELETED)
@@ -298,7 +317,7 @@ class RootController(private val clockService: ClockService,
         val events = if (date != null) {
             readEvents(date)
         } else {
-            readFollowingEvents(5, maxDate = ZonedDateTime.now(timezone).plusWeeks(1).toLocalDateTime())
+            readFollowingEvents(3, maxDate=ZonedDateTime.now(timezone).plusWeeks(1).toLocalDateTime())
         }
         val messageId = if (date.isNotNull()) {
             when {
@@ -319,57 +338,42 @@ class RootController(private val clockService: ClockService,
         events.forEach { addEvent(it) }
     }
 
-    private fun Bot.addEvent(implicitToday: Boolean = false) = withCalendar {
+    private fun Bot.putEvent(from: ZonedDateTime?, to: ZonedDateTime?,
+                             startDateOriginal: String? = getString("start-date-original"),
+                             endDateOriginal: String? = getString("end-date-original"),
+                             startTimeOriginal: String? = getString("start-time-original"),
+                             endTimeOriginal: String? = getString("end-time-original")) = withCalendar {
+        var start = from
+        var end = to
         val now = ZonedDateTime.now(timezone)!!
         logger.info("Now: $now")
         val title = getString("event-title")
-        var start = getDateTime("start-date", "start-time",
-                defaultDate = if (implicitToday) calendarService.today(timezone) else null,
-                defaultTime = if (implicitToday) clockService.now(timezone) else null)?.atZone(timezone)
-        var end = getDateTime("end-date", "end-time", defaultDate = start?.toLocalDate())?.atZone(timezone)
-        val startOriginal = getString("start-date-original")
-        val endOriginal = getString("end-date-original")
         val location = getString("location")
         logger.info("Title: $title")
-        logger.info("Start: $start (Original $startOriginal)")
-        logger.info("End:   $end (Original $endOriginal)")
+        logger.info("Start: $start (Original $startDateOriginal / $startTimeOriginal)")
+        logger.info("End:   $end (Original $endDateOriginal / $endTimeOriginal)")
         if (title != null && start != null && end != null) {
-            start = calendarService.implicitTime(now, start, startOriginal, language, timezone)
-            end = calendarService.implicitTime(now, end, endOriginal, language, timezone)
-            if (start.toLocalDate().month != end.toLocalDate().month) {
-                logger.info("Different month")
-                if (startOriginal != null && !calendarService.isDayOfMonth(startOriginal, language)) {
-                    logger.info("Start without month")
-                    start = start.withMonth(end.toLocalDate().monthValue)!!
-                } else if (endOriginal != null && !calendarService.isDayOfMonth(endOriginal, language)) {
-                    logger.info("End without month")
-                    end = end.withMonth(start.toLocalDate().monthValue)!!
-                }
-            }
-            if (start < now) {
+            start = calendarService.implicitTime(now, start, startDateOriginal, startTimeOriginal, language, timezone)
+            end = calendarService.implicitTime(now, end, endDateOriginal, endTimeOriginal, language, timezone)
+            if (start < now.minusMinutes(1)) {
                 logger.info("Start < now")
-                var shift = true
                 if (start.toLocalDate() < now.toLocalDate()) {
                     logger.info("Start Date < Today")
                     start = now.toLocalDate().atTime(start.toLocalTime()).atZone(timezone)!!
-                    shift = start < now
                 }
-                if (shift) {
-                    start = start.plusHours(12)!!
-                }
-                logger.info("Shifted start time: $shift")
+                start = start.shiftTime(now)
             }
             if (end.toLocalDate() < start.toLocalDate()) {
                 logger.info("End Date < Start Date")
                 end = start.toLocalDate().atTime(end.toLocalTime()).atZone(timezone)!!
             }
-            if (end <= start) {
-                logger.info("End Time <= Start Time, Shift 12h")
-                end = end.plusHours(12)!!
-            }
             if (getTime("end-time") == null) {
                 logger.info("end-time not specified -> end = start + 1h")
-                end = start.toLocalDate().atTime(start.toLocalTime()).plusHours(1).atZone(timezone)!!
+                end = end.toLocalDate().atTime(start.toLocalTime()).plusHours(1).atZone(timezone)!!
+            }
+            if (end <= start) {
+                logger.info("End Time <= Start Time")
+                end = end.shiftTime(start)
             }
             logger.info("Start Finish: $start")
             logger.info("End Finish:   $end")
@@ -377,6 +381,20 @@ class RootController(private val clockService: ClockService,
             addMessages(S.ADDED_EVENT, S.YOUR_EVENT)
             addEvent(event)
         }
+    }
+
+    fun Bot.addEvent(implicitToday: Boolean = false) {
+        val start = getDateTime("start-date", "start-time",
+                defaultDate = if (implicitToday) calendarService.today(timezone) else null,
+                defaultTime = if (implicitToday) clockService.now(timezone) else null)?.atZone(timezone)
+        val end = getDateTime("end-date", "end-time", defaultDate = start?.toLocalDate())?.atZone(timezone)
+        putEvent(start, end)
+    }
+
+    fun Bot.addPeriodEvent() {
+        val datePeriod = getDatePeriod("date-period")
+        val datePeriodOriginal = getString("date-period-original")
+        putEvent(datePeriod?.start?.atStartOfDay(timezone), datePeriod?.end?.atStartOfDay(timezone), datePeriodOriginal, datePeriodOriginal)
     }
 
     fun Bot.addQuickEvent() = withCalendar {
@@ -406,6 +424,7 @@ class RootController(private val clockService: ClockService,
             "events.read" to { b -> b.readEvents() },
             "events.add" to { b -> b.addEvent() },
             "events.add.now" to { b -> b.addEvent(implicitToday = true) },
+            "events.add.period" to { b -> b.addPeriodEvent() },
             "events.add.quick" to { b -> b.addQuickEvent() },
             "events.delete" to { b -> b.deleteEvent() }
     )

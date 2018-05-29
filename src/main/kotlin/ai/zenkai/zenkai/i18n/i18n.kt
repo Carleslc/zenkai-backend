@@ -62,6 +62,7 @@ enum class S {
     TODAY,
     YESTERDAY,
     TOMORROW,
+    MORNING,
     CURRENT_TIME,
     CURRENT_TIME_SINGLE,
     CITY_NOT_FOUND,

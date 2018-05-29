@@ -210,7 +210,7 @@ data class Bot(val language: String,
 
     fun getParamWithContext(param: String, context: String = USER_CONTEXT): Any? {
         return getParam(param) ?: // try to get from parameters
-            action.getContextArgument(context, param)?.value // else try to get from context
+            action.getContextArgument(context, param)?.value // otherwise try to get from context
     }
 
     fun getStringWithContext(param: String, context: String = USER_CONTEXT): String? {

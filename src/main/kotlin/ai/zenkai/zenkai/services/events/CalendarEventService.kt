@@ -55,9 +55,10 @@ class CalendarEventService(private val service: GoogleCalendarService,
     override fun findEvent(title: String): Event? {
         return service.events().list(defaultCalendarId)
                     .setQ(title)
+                    .setTimeMin(ZonedDateTime.now(timezone).toDateTime())
                     .setTimeZone(timezone.id)
                     .setFields("items($EVENT_FIELDS)")
-                    .execute().items.firstOrNull()?.toEvent(timezone)
+                    .execute().items.sortedBy { it.start.dateTime.value }.firstOrNull()?.toEvent(timezone)
     }
 
     override fun removeEvent(event: Event) {
@@ -66,7 +67,7 @@ class CalendarEventService(private val service: GoogleCalendarService,
         }
     }
 
-    private fun getEvents(start: LocalDateTime? = null, end: LocalDateTime? = null, maxResults: Int? = null): List<Event> {
+    fun getEvents(start: LocalDateTime? = null, end: LocalDateTime? = null, maxResults: Int? = null): List<Event> {
         val batch = service.batch()
         val merge = BatchEvents(timezone)
         calendars.forEach {

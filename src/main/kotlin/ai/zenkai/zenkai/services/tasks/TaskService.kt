@@ -9,7 +9,7 @@ interface TaskService : Service {
 
     fun Board.getReadableTasks(status: TaskStatus, comparator: Comparator<Task>? = Task.priorityComparator()): List<Task>
 
-    fun Board.getPreviousTasks(status: TaskStatus = TaskStatus.DONE, comparator: Comparator<Task>? = Task.statusComparator()): List<Task>
+    fun Board.getAllTasks(comparator: Comparator<Task>? = Task.statusComparator()): List<Task>
 
     fun Board.addTask(task: Task): Task
 

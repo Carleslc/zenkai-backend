@@ -52,8 +52,8 @@ open class Trello(private val applicationKey: String, private val userToken: Str
         return post(getUrl(CARDS, richParams), Card::class, richParams.withKeyToken())
     }
 
-    final override fun moveCard(cardId: String, listId: String) {
-        val richParams = parameters("idList" to listId)
+    final override fun moveCard(cardId: String, listId: String, params: Parameters) {
+        val richParams = params.add("idList" to listId)
         return put(getUrl(CARD, richParams), richParams.withId(cardId).withKeyToken())
     }
 

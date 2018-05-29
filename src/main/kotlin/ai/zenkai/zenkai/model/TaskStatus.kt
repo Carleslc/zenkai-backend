@@ -18,20 +18,6 @@ enum class TaskStatus(val idNameList: S) {
         return names
     }
 
-    fun getPreviousListNames(language: String): Map<String, TaskStatus> {
-        val names = mutableMapOf(getListName(language) to this)
-        when(this) {
-            TODO -> names.add(SOMEDAY, language)
-            DOING -> names.add(TODO, language)
-            else -> { // DONE
-                names.add(SOMEDAY, language)
-                names.add(TODO, language)
-                names.add(DOING, language)
-            }
-        }
-        return names
-    }
-
     fun getListName(language: String) = i18n[idNameList, language].toLowerCase(language.toLocale())
 
     private fun MutableMap<String, TaskStatus>.add(status: TaskStatus, language: String) {
@@ -40,6 +26,8 @@ enum class TaskStatus(val idNameList: S) {
 
     companion object {
         fun default() = TODO
+
+        fun getListNames(language: String): Map<String, TaskStatus> = TaskStatus.values().map { it.getListName(language) to it }.toMap()
 
         fun parse(taskType: String?) = if (taskType != null) valueOf(taskType.toString()) else default()
     }

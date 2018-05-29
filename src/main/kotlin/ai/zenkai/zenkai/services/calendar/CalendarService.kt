@@ -85,20 +85,22 @@ class CalendarService(val clockService: ClockService) {
         return query.cleanFormat(locale).words(locale).any { it in months[language]!! }
     }
 
-    fun implicitTime(from: ZonedDateTime, date: ZonedDateTime, original: String?, language: String, zoneId: ZoneId): ZonedDateTime {
-        if (original != null && from.hour < IMPLICIT_START_OF_DAY_HOUR && hasTomorrow(original, language)) {
-            var time = date.toLocalTime()
-            if (time.hour < IMPLICIT_START_OF_DAY_HOUR && isTomorrow(original, language)) {
-                time = time.plusHours(12)
-            }
-            return date.toLocalDate().minusDays(1).atTime(time).atZone(zoneId)!!
+    fun implicitTime(from: ZonedDateTime, date: ZonedDateTime, dateOriginal: String?, timeOriginal: String?, language: String, zoneId: ZoneId): ZonedDateTime {
+        var fixedDate = date.toLocalDate()
+        var fixedTime = date.toLocalTime()
+        if (dateOriginal != null && from.hour < IMPLICIT_START_OF_DAY_HOUR && isTomorrow(dateOriginal, language)) { // Early morning "tomorrow" request
+            fixedDate = date.toLocalDate().minusDays(1)
         }
-        return date
+        val time = date.toLocalTime()
+        if (timeOriginal != null && time.hour < IMPLICIT_AFTERNOON_HOUR && !isMorning(timeOriginal, language)) { // Implicit afternoon hour
+            fixedTime = time.plusHours(12)
+        }
+        return fixedDate.atTime(fixedTime).atZone(zoneId)
     }
 
-    private fun isTomorrow(query: String, language: String) = i18n[S.TOMORROW, language] == query.trim().toLowerCase(language.toLocale())
+    private fun isTomorrow(query: String, language: String) = i18n[S.TOMORROW, language] in query.toLowerCase(language.toLocale())
 
-    private fun hasTomorrow(query: String, language: String) = i18n[S.TOMORROW, language] in query.toLowerCase(language.toLocale())
+    private fun isMorning(query: String, language: String) = i18n[S.MORNING, language] in query.toLowerCase(language.toLocale())
 
     fun isPast(query: String, language: String): Boolean {
         val lower = query.toLowerCase(language.toLocale())
@@ -138,13 +140,23 @@ fun LocalDate.atEndOfWeek(): LocalDate {
     return plusDays(offset)
 }
 
-fun LocalDateTime?.shiftToday(zoneId: ZoneId): ZonedDateTime {
-    val now = ZonedDateTime.now(zoneId)
-    var dateTime: ZonedDateTime = this?.atZone(zoneId) ?: now
-    if (dateTime.toLocalDate() == now.toLocalDate() && dateTime.toLocalTime() < now.toLocalTime()) {
-        dateTime = now
+fun LocalDateTime?.shiftToday(zoneId: ZoneId, from: ZonedDateTime = ZonedDateTime.now(zoneId)): ZonedDateTime {
+    var dateTime: ZonedDateTime = this?.atZone(zoneId) ?: from
+    if (dateTime.toLocalDate() == from.toLocalDate() && dateTime.toLocalTime() < from.toLocalTime()) {
+        dateTime = from
     }
     return dateTime
+}
+
+fun ZonedDateTime.shiftTime(from: ZonedDateTime): ZonedDateTime {
+    var result = this
+    if (result < from) {
+        result = result.plusHours(12) // to the afternoon
+        if (result < from) {
+            result = result.plusHours(12) // to the next day
+        }
+    }
+    return result
 }
 
 fun ZonedDateTime.withOffset(zoneId: ZoneId = zone): ZonedDateTime = toLocalDateTime().withOffset(zoneId)
@@ -155,4 +167,5 @@ fun DayOfWeek.displayName(locale: Locale): String = getDisplayName(TextStyle.FUL
 
 fun Month.displayName(locale: Locale): String = getDisplayName(TextStyle.FULL, locale)
 
-const val IMPLICIT_START_OF_DAY_HOUR = 5
+const val IMPLICIT_START_OF_DAY_HOUR = 6
+const val IMPLICIT_AFTERNOON_HOUR = 8

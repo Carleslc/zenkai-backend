@@ -4,6 +4,7 @@ import arrow.data.Try
 import me.carleslc.kotlin.extensions.standard.getOrNull
 import me.carleslc.kotlin.extensions.time.date
 import java.time.LocalDate
+import java.time.ZoneId
 
 data class DatePeriod(val start: LocalDate, val end: LocalDate, @Transient private val calendarService: CalendarService) {
 
@@ -27,9 +28,9 @@ data class DatePeriod(val start: LocalDate, val end: LocalDate, @Transient priva
             }.getOrNull()
         }
 
-        fun until(end: LocalDate, calendarService: CalendarService) = DatePeriod(date(), end, calendarService)
+        fun until(end: LocalDate, calendarService: CalendarService, zoneId: ZoneId) = DatePeriod(LocalDate.now(zoneId), end, calendarService)
 
-        fun default(calendarService: CalendarService) = until(date().plusWeeks(1), calendarService)
+        fun default(calendarService: CalendarService, zoneId: ZoneId) = until(LocalDate.now(zoneId).plusWeeks(1), calendarService, zoneId)
 
     }
 
