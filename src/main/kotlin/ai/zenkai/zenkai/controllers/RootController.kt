@@ -6,6 +6,7 @@ import ai.zenkai.zenkai.exceptions.badRequest
 import ai.zenkai.zenkai.exceptions.multicatch
 import ai.zenkai.zenkai.fixInt
 import ai.zenkai.zenkai.i18n.S
+import ai.zenkai.zenkai.i18n.toLocale
 import ai.zenkai.zenkai.model.*
 import ai.zenkai.zenkai.model.TaskStatus.*
 import ai.zenkai.zenkai.replace
@@ -14,7 +15,6 @@ import ai.zenkai.zenkai.services.calendar.DatePeriod
 import ai.zenkai.zenkai.services.calendar.shiftTime
 import ai.zenkai.zenkai.services.clock.ClockService
 import ai.zenkai.zenkai.services.clock.isSingleHour
-import ai.zenkai.zenkai.services.tasks.TrelloTaskService
 import ai.zenkai.zenkai.services.weather.WeatherService
 import com.google.api.client.googleapis.json.GoogleJsonResponseException
 import com.google.gson.Gson
@@ -237,7 +237,7 @@ class RootController(private val clockService: ClockService,
             var task = Task(title.capitalize(), description, status, deadline)
             val messageId: S
             val tasks = getDefaultBoard().getAllTasks(null)
-            val matchTask = tasks.find { it.isSimilar(task) }
+            val matchTask = tasks.find { it.isSimilar(task, language.toLocale()) }
             val alreadyAdded = matchTask?.status == status
             if (matchTask != null) {
                 messageId = if (alreadyAdded) {
@@ -273,7 +273,7 @@ class RootController(private val clockService: ClockService,
         val title = getString("title")
         if (title != null) {
             val tasks = getDefaultBoard().getAllTasks(comparator=compareBy<Task> { it.title.length })
-            val task = tasks.find { it.hasSimilarTitle(title) }
+            val task = tasks.find { it.hasSimilarTitle(title, language.toLocale()) }
             if (task != null) {
                 getDefaultBoard().archiveTask(task)
                 addMessage(S.TASK_DELETED)
@@ -313,11 +313,16 @@ class RootController(private val clockService: ClockService,
     }
 
     fun Bot.readEvents() = withCalendar {
-        val date = getDate("date")
+        var date = getDate("date")
+        val dateOriginal = getString("date-original")
+        val now = ZonedDateTime.now(timezone)
+        if (date != null) {
+            date = calendarService.implicitDate(now, date, dateOriginal, language)
+        }
         val events = if (date != null) {
             readEvents(date)
         } else {
-            readFollowingEvents(3, maxDate=ZonedDateTime.now(timezone).plusWeeks(1).toLocalDateTime())
+            readFollowingEvents(3, maxDate=now.plusWeeks(1).toLocalDateTime())
         }
         val messageId = if (date.isNotNull()) {
             when {
@@ -353,8 +358,8 @@ class RootController(private val clockService: ClockService,
         logger.info("Start: $start (Original $startDateOriginal / $startTimeOriginal)")
         logger.info("End:   $end (Original $endDateOriginal / $endTimeOriginal)")
         if (title != null && start != null && end != null) {
-            start = calendarService.implicitTime(now, start, startDateOriginal, startTimeOriginal, language, timezone)
-            end = calendarService.implicitTime(now, end, endDateOriginal, endTimeOriginal, language, timezone)
+            start = calendarService.implicitDateTime(now, start, startDateOriginal, startTimeOriginal, language)
+            end = calendarService.implicitDateTime(now, end, endDateOriginal ?: startDateOriginal, endTimeOriginal, language)
             if (start < now.minusMinutes(1)) {
                 logger.info("Start < now")
                 if (start.toLocalDate() < now.toLocalDate()) {

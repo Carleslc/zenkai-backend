@@ -1,9 +1,9 @@
 package ai.zenkai.zenkai.model
 
+import ai.zenkai.zenkai.cleanFormat
 import ai.zenkai.zenkai.i18n.S
 import ai.zenkai.zenkai.i18n.i18n
 import ai.zenkai.zenkai.services.calendar.CalendarService
-import me.carleslc.kotlin.extensions.strings.isNotNullOrBlank
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.util.*
@@ -16,11 +16,13 @@ data class Task(val title: String,
                 val tags: List<String> = listOf(),
                 val id: String = "") {
 
-    fun hasSimilarTitle(title: String): Boolean {
-        return this.title.contains(title, true) || title.contains(this.title, true)
+    fun hasSimilarTitle(title: String, locale: Locale): Boolean {
+        val t1 = this.title.cleanFormat(locale)
+        val t2 = title.cleanFormat(locale)
+        return t1.contains(t2) || t2.contains(t1)
     }
 
-    fun isSimilar(other: Task) = hasSimilarTitle(other.title)
+    fun isSimilar(other: Task, locale: Locale) = hasSimilarTitle(other.title, locale)
 
     fun getDisplayText(language: String, zoneId: ZoneId, calendarService: CalendarService) = buildString {
         appendln(title)
