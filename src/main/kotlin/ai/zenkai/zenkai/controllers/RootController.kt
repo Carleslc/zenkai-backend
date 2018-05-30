@@ -240,10 +240,10 @@ class RootController(private val clockService: ClockService,
             val matchTask = tasks.find { it.isSimilar(task, language.toLocale()) }
             val alreadyAdded = matchTask?.status == status
             if (matchTask != null) {
+                task = matchTask
                 messageId = if (alreadyAdded) {
                     S.ALREADY_ADDED
                 } else {
-                    task = matchTask
                     getDefaultBoard().moveTask(task, status)
                     S.MOVED_TASK
                 }
