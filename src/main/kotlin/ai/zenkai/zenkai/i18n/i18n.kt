@@ -53,6 +53,7 @@ enum class S {
     LOGIN_TASKS,
     LOGIN_CALENDAR,
     LOGIN_TIMER,
+    LOGOUT,
     NAME,
     SUM,
     SUBSTRACT,

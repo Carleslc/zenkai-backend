@@ -168,17 +168,19 @@ data class Bot(val language: String,
         }
     }
 
-    fun needsLogin(type: TokenType = lastRequiredToken!!) {
+    fun needsLogin(type: TokenType = lastRequiredToken!!, withMessages: Boolean = true) {
         onNeedLogin()
         logger.info("Needs login $type")
         val id = when (type) {
             TokenType.TRELLO -> S.LOGIN_TASKS
             TokenType.TOGGL -> S.LOGIN_TIMER
         }
-        val messages = get(id).split('\n')
-        addMessage(messages[0])
-        addText(type.authUrl)
-        addMessage(messages[1])
+        if (withMessages) {
+            val messages = get(id).split('\n')
+            addMessage(messages[0])
+            addText(type.authUrl)
+            addMessage(messages[1])
+        }
         error = LoginError(type)
         tokens[type] = ""
         action.fillUserTokens(tokens)
@@ -188,6 +190,14 @@ data class Bot(val language: String,
         onNeedLogin()
         addMessage(id)
         addText(authUrl)
+    }
+
+    fun logout(withMessages: Boolean = true) {
+        requireToken(TokenType.TRELLO) { GoogleApiAuthorization(it).clear() }
+        needsLogin(TokenType.TRELLO, false)
+        if (withMessages) {
+            addMessage(S.LOGOUT)
+        }
     }
 
     private fun send() {
@@ -433,7 +443,7 @@ val DialogflowApp.source get() = request.body.originalRequest?.source ?: request
 
 val DialogflowApp.query get() = request.body.result.resolvedQuery
 
-private val logger get() = Bot.logger
+val logger get() = Bot.logger
 
 private fun DialogflowApp.error(error: BotError, e: Exception) {
     logError(error, e)

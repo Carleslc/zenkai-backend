@@ -18,11 +18,10 @@ data class Task(val title: String,
 
     fun hasSimilarTitle(title: String, locale: Locale): Boolean {
         val t1 = this.title.cleanFormat(locale)
-        val t2 = title.cleanFormat(locale)
-        return t1.contains(t2) || t2.contains(t1)
+        return t1.contains(title) || title.contains(t1)
     }
 
-    fun isSimilar(other: Task, locale: Locale) = hasSimilarTitle(other.title, locale)
+    fun isSimilar(other: Task, locale: Locale) = hasSimilarTitle(other.title.cleanFormat(locale), locale)
 
     fun getDisplayText(language: String, zoneId: ZoneId, calendarService: CalendarService) = buildString {
         appendln(title)

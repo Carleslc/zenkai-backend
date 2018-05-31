@@ -1,15 +1,12 @@
 package ai.zenkai.zenkai.controllers
 
-import ai.zenkai.zenkai.CachedHttpServletRequest
-import ai.zenkai.zenkai.clean
+import ai.zenkai.zenkai.*
 import ai.zenkai.zenkai.exceptions.badRequest
 import ai.zenkai.zenkai.exceptions.multicatch
-import ai.zenkai.zenkai.fixInt
 import ai.zenkai.zenkai.i18n.S
 import ai.zenkai.zenkai.i18n.toLocale
 import ai.zenkai.zenkai.model.*
 import ai.zenkai.zenkai.model.TaskStatus.*
-import ai.zenkai.zenkai.replace
 import ai.zenkai.zenkai.services.calendar.CalendarService
 import ai.zenkai.zenkai.services.calendar.DatePeriod
 import ai.zenkai.zenkai.services.calendar.shiftTime
@@ -273,7 +270,7 @@ class RootController(private val clockService: ClockService,
         val title = getString("title")
         if (title != null) {
             val tasks = getDefaultBoard().getAllTasks(comparator=compareBy<Task> { it.title.length })
-            val task = tasks.find { it.hasSimilarTitle(title, language.toLocale()) }
+            val task = tasks.find { it.hasSimilarTitle(title.cleanFormat(locale), locale) }
             if (task != null) {
                 getDefaultBoard().archiveTask(task)
                 addMessage(S.TASK_DELETED)
@@ -420,6 +417,7 @@ class RootController(private val clockService: ClockService,
             "weather" to { b -> b.weather() },
             "greetings" to { b -> b.greetings() },
             "login" to { b -> b.login() },
+            "logout" to { b -> b.logout() },
             "time.get" to { b -> b.clock() },
             "date.get" to { b -> b.calendar() },
             "date.get.period" to { b -> b.calendarPeriod() },
