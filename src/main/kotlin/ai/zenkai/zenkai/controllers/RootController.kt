@@ -231,7 +231,7 @@ class RootController(private val clockService: ClockService,
             val deadline = getDateTime("date", "time")
             val status = TaskStatus.parse(taskType)
             val description = query
-            var task = Task(title.capitalize(), description, status, deadline)
+            var task = Task(title.capitalize(), description, status, deadline?.toLocalDateTime())
             val messageId: S
             val tasks = getDefaultBoard().getAllTasks(null)
             val matchTask = tasks.find { it.isSimilar(task, language.toLocale()) }
@@ -266,10 +266,10 @@ class RootController(private val clockService: ClockService,
         }
     }
 
-    private fun Bot.tryDeleteTaskOr(notFoundBlock: Bot.() -> Unit) = withTrello {
+    private fun Bot.tryDeleteTaskOr(notFoundBlock: Bot.() -> Unit = {}) = withTrello {
         val title = getString("title")
         if (title != null) {
-            val tasks = getDefaultBoard().getAllTasks(comparator=compareBy<Task> { it.title.length })
+            val tasks = getDefaultBoard().getAllTasks(comparator = compareBy<Task> { it.title.length })
             val task = tasks.find { it.hasSimilarTitle(title.cleanFormat(locale), locale) }
             if (task != null) {
                 getDefaultBoard().archiveTask(task)
@@ -282,7 +282,7 @@ class RootController(private val clockService: ClockService,
         }
     }
 
-    private fun Bot.tryDeleteEventOr(notFoundBlock: Bot.() -> Unit) = withCalendar {
+    private fun Bot.tryDeleteEventOr(notFoundBlock: Bot.() -> Unit = {}) = withCalendar {
         val title = getString("title")
         if (title != null) {
             val event = findEvent(title.capitalize())
@@ -310,16 +310,11 @@ class RootController(private val clockService: ClockService,
     }
 
     fun Bot.readEvents() = withCalendar {
-        var date = getDate("date")
-        val dateOriginal = getString("date-original")
-        val now = ZonedDateTime.now(timezone)
-        if (date != null) {
-            date = calendarService.implicitDate(now, date, dateOriginal, language)
-        }
+        val date = getDate("date")
         val events = if (date != null) {
             readEvents(date)
         } else {
-            readFollowingEvents(3, maxDate=now.plusWeeks(1).toLocalDateTime())
+            readFollowingEvents(3, maxDate = ZonedDateTime.now(timezone).plusWeeks(1).toLocalDateTime())
         }
         val messageId = if (date.isNotNull()) {
             when {
@@ -341,6 +336,7 @@ class RootController(private val clockService: ClockService,
     }
 
     private fun Bot.putEvent(from: ZonedDateTime?, to: ZonedDateTime?,
+                             endTimeSpecified: Boolean,
                              startDateOriginal: String? = getString("start-date-original"),
                              endDateOriginal: String? = getString("end-date-original"),
                              startTimeOriginal: String? = getString("start-time-original"),
@@ -369,7 +365,7 @@ class RootController(private val clockService: ClockService,
                 logger.info("End Date < Start Date")
                 end = start.toLocalDate().atTime(end.toLocalTime()).atZone(timezone)!!
             }
-            if (getTime("end-time") == null) {
+            if (!endTimeSpecified && start.toLocalDate() != end.toLocalDate()) {
                 logger.info("end-time not specified -> end = start + 1h")
                 end = end.toLocalDate().atTime(start.toLocalTime()).plusHours(1).atZone(timezone)!!
             }
@@ -388,15 +384,16 @@ class RootController(private val clockService: ClockService,
     fun Bot.addEvent(implicitToday: Boolean = false) {
         val start = getDateTime("start-date", "start-time",
                 defaultDate = if (implicitToday) calendarService.today(timezone) else null,
-                defaultTime = if (implicitToday) clockService.now(timezone) else null)?.atZone(timezone)
-        val end = getDateTime("end-date", "end-time", defaultDate = start?.toLocalDate())?.atZone(timezone)
-        putEvent(start, end)
+                defaultTime = if (implicitToday) clockService.now(timezone) else null)
+        val end = getDateTime("end-date", "end-time", defaultDate = start?.toLocalDate())
+        putEvent(start, end, getTime("end-time") != null)
     }
 
     fun Bot.addPeriodEvent() {
         val datePeriod = getDatePeriod("date-period")
         val datePeriodOriginal = getString("date-period-original")
-        putEvent(datePeriod?.start?.atStartOfDay(timezone), datePeriod?.end?.atStartOfDay(timezone), datePeriodOriginal, datePeriodOriginal)
+        putEvent(datePeriod?.start?.atStartOfDay(timezone), datePeriod?.end?.atStartOfDay(timezone),
+                true, datePeriodOriginal, datePeriodOriginal)
     }
 
     fun Bot.addQuickEvent() = withCalendar {
@@ -408,6 +405,10 @@ class RootController(private val clockService: ClockService,
             addMessage(S.CANNOT_ADD_EVENT)
         }
     }
+
+    fun Bot.rollbackEventAdd() = tryDeleteEventOr()
+
+    fun Bot.rollbackTaskAdd() = tryDeleteTaskOr()
 
     val actionMap: Map<String, Handler> = mapOf(
             "calculator.sum" to { b -> b.sum() },
@@ -423,12 +424,14 @@ class RootController(private val clockService: ClockService,
             "date.get.period" to { b -> b.calendarPeriod() },
             "tasks.read" to { b -> b.readTasks() },
             "tasks.add" to { b -> b.addTask() },
+            "tasks.add.rollback" to { b -> b.rollbackTaskAdd() },
             "tasks.delete" to { b -> b.deleteTask() },
             "events.read" to { b -> b.readEvents() },
             "events.add" to { b -> b.addEvent() },
             "events.add.now" to { b -> b.addEvent(implicitToday = true) },
             "events.add.period" to { b -> b.addPeriodEvent() },
             "events.add.quick" to { b -> b.addQuickEvent() },
+            "events.add.rollback" to { b -> b.rollbackEventAdd() },
             "events.delete" to { b -> b.deleteEvent() }
     )
 

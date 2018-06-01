@@ -34,10 +34,7 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.web.client.HttpClientErrorException
-import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.LocalTime
-import java.time.ZoneId
+import java.time.*
 import javax.servlet.http.HttpServletRequest
 import javax.servlet.http.HttpServletResponse
 
@@ -218,13 +215,13 @@ data class Bot(val language: String,
 
     fun getParam(param: String): Any? = action.getArgument(param)
 
-    fun getParamWithContext(param: String, context: String = USER_CONTEXT): Any? {
+    fun getParamWithContext(param: String, context: String = USER_CONTEXT, contextParam: String = param): Any? {
         return getParam(param) ?: // try to get from parameters
-            action.getContextArgument(context, param)?.value // otherwise try to get from context
+            action.getContextArgument(context, contextParam)?.value // otherwise try to get from context
     }
 
-    fun getStringWithContext(param: String, context: String = USER_CONTEXT): String? {
-        val retrieved = getParamWithContext(param, context)?.toString()
+    fun getStringWithContext(param: String, context: String = USER_CONTEXT, contextParam: String = param): String? {
+        val retrieved = getParamWithContext(param, context, contextParam)?.toString()
         return if (retrieved.isNullOrBlank()) null else retrieved
     }
 
@@ -247,7 +244,13 @@ data class Bot(val language: String,
     private fun String?.parseDate(): LocalDate? = orEmpty()
             .letIf(String::isNotEmpty, { calendarService.parse(it) }, { null })
 
-    fun getDate(param: String): LocalDate? = getString(param).parseDate()
+    fun getDate(param: String): LocalDate? {
+        val date = getString(param).parseDate()
+        val dateOriginal = getString("$param-original")
+        return if (date != null) {
+            calendarService.implicitDate(ZonedDateTime.now(timezone), date, dateOriginal, language)
+        } else date
+    }
 
     fun getDateWithContext(param: String, context: String = USER_CONTEXT): LocalDate? {
         return getStringWithContext(param, context).parseDate()
@@ -256,7 +259,13 @@ data class Bot(val language: String,
     private fun String?.parseTime(): LocalTime? = orEmpty()
             .letIf(String::isNotEmpty, { clockService.parse(it) }, { null })
 
-    fun getTime(param: String): LocalTime? = getString(param).parseTime()
+    fun getTime(param: String): LocalTime? {
+        val time = getString(param).parseTime()
+        val timeOriginal = getString("$param-original")
+        return if (time != null) {
+            calendarService.implicitTime(ZonedDateTime.now(timezone), time, timeOriginal, language)
+        } else time
+    }
 
     fun getTimeWithContext(param: String, context: String = USER_CONTEXT): LocalTime? {
         return getStringWithContext(param, context).parseTime()
@@ -268,8 +277,13 @@ data class Bot(val language: String,
         return (date ?: defaultDate ?: calendarService.today(timezone)).atTime(time ?: defaultTime ?: LocalTime.MIDNIGHT.withSecond(0))
     }
 
-    fun getDateTime(dateParam: String, timeParam: String, defaultDate: LocalDate? = null, defaultTime: LocalTime? = null): LocalDateTime? {
-        return (getDate(dateParam) to getTime(timeParam)).parseDateTime(defaultDate, defaultTime)
+    fun getDateTime(dateParam: String, timeParam: String, defaultDate: LocalDate? = null, defaultTime: LocalTime? = null): ZonedDateTime? {
+        val datetime = (getDate(dateParam) to getTime(timeParam)).parseDateTime(defaultDate, defaultTime)?.atZone(timezone)
+        val dateOriginal = getString("$dateParam-original")
+        val timeOriginal = getString("$timeParam-original")
+        return if (datetime != null) {
+            calendarService.implicitDateTime(ZonedDateTime.now(timezone), datetime, dateOriginal, timeOriginal, language)
+        } else datetime
     }
 
     fun getDateTimeWithContext(dateParam: String, timeParam: String, defaultDate: LocalDate? = null, defaultTime: LocalTime? = null, context: String = USER_CONTEXT): LocalDateTime? {
@@ -444,6 +458,12 @@ val DialogflowApp.source get() = request.body.originalRequest?.source ?: request
 val DialogflowApp.query get() = request.body.result.resolvedQuery
 
 val logger get() = Bot.logger
+
+fun DialogflowApp.addArgument(id: String, value: String, contextName: String = USER_CONTEXT) {
+    val context = getContext(contextName)
+    context?.parameters?.put(id, value)
+    setContext(contextName, lifespan=100, parameters=context?.parameters ?: mutableMapOf<String, Any>(id to value))
+}
 
 private fun DialogflowApp.error(error: BotError, e: Exception) {
     logError(error, e)
