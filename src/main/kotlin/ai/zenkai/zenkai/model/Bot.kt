@@ -307,6 +307,17 @@ data class Bot(val language: String,
         return getStringWithContext(param, context).parseDatePeriod()
     }
 
+    fun isValid(title: String?): Boolean {
+        if (title != null) {
+            val cancelled = title.equals(i18n[S.CANCEL, language], true)
+            if (cancelled) {
+                addMessage(S.CANCELLED)
+            }
+            return !cancelled
+        }
+        return false
+    }
+
     fun isOrWas(date: LocalDate) = get(if (date.isBefore(calendarService.today(timezone))) S.WAS else S.IS)
 
     operator fun get(id: S): String = i18n[id, language]
@@ -362,7 +373,11 @@ data class Bot(val language: String,
                     bot.loginIfTokenSuccess(false)
                 } else action.serviceUnavailable(e)
             } catch (e: Exception) {
-                action.serviceUnavailable(e)
+                var message = e.message
+                if (message != null && "timeout" in message) {
+                    message = i18n[S.TIMEOUT, bot?.language ?: DEFAULT_LANGUAGE]
+                }
+                action.serviceUnavailable(e, message)
             }
         }
 
@@ -486,8 +501,8 @@ private fun DialogflowApp.badRequest(e: Exception) {
     error(BadRequestError(e), e)
 }
 
-private fun DialogflowApp.serviceUnavailable(e: Exception) {
-    error(BotError(e.message, HttpStatus.SERVICE_UNAVAILABLE), e)
+private fun DialogflowApp.serviceUnavailable(e: Exception, message: String? = e.message) {
+    error(BotError(message, HttpStatus.SERVICE_UNAVAILABLE), e)
 }
 
 private fun DialogflowApp.fillAndSend(speech: String?, data: Map<String, Any>) {
