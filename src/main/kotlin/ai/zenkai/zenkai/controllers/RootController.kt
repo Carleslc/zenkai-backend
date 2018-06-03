@@ -4,7 +4,6 @@ import ai.zenkai.zenkai.*
 import ai.zenkai.zenkai.exceptions.badRequest
 import ai.zenkai.zenkai.exceptions.multicatch
 import ai.zenkai.zenkai.i18n.S
-import ai.zenkai.zenkai.i18n.toLocale
 import ai.zenkai.zenkai.model.*
 import ai.zenkai.zenkai.model.TaskStatus.*
 import ai.zenkai.zenkai.services.calendar.CalendarService
@@ -234,13 +233,15 @@ class RootController(private val clockService: ClockService,
             var task = Task(title.capitalize(), description, status, deadline?.toLocalDateTime())
             val messageId: S
             val tasks = getDefaultBoard().getAllTasks(null)
-            val matchTask = tasks.find { it.isSimilar(task, language.toLocale()) }
+            val matchTask = tasks.find { it.isSimilar(task, locale) }
             val alreadyAdded = matchTask?.status == status
+            var movedFrom: TaskStatus? = null
             if (matchTask != null) {
                 task = matchTask
                 messageId = if (alreadyAdded) {
                     S.ALREADY_ADDED
                 } else {
+                    movedFrom = task.status
                     getDefaultBoard().moveTask(task, status)
                     S.MOVED_TASK
                 }
@@ -261,6 +262,7 @@ class RootController(private val clockService: ClockService,
                     }
                 }
             }
+            setArgument("moved-from", movedFrom?.toString())
             addMessage(S.YOUR_TASK)
             addTask(task)
         }
@@ -408,7 +410,29 @@ class RootController(private val clockService: ClockService,
 
     fun Bot.rollbackEventAdd() = tryDeleteEventOr()
 
-    fun Bot.rollbackTaskAdd() = tryDeleteTaskOr()
+    fun Bot.rollbackTaskAdd() {
+        val moved = getString("moved-from")
+        val title = getString("title")
+        if (moved != null && title != null) {
+            withTrello {
+                val status = TaskStatus.valueOf(moved)
+                val tasks = getDefaultBoard().getAllTasks(null)
+                val task = tasks.find { it.hasSimilarTitle(title.cleanFormat(locale), locale) }
+                if (task != null) {
+                    val messageId = if (task.status == status) {
+                        S.ALREADY_ADDED
+                    } else {
+                        getDefaultBoard().moveTask(task, status)
+                        setArgument("moved-from", task.status.toString())
+                        S.MOVED_TASK
+                    }
+                    addMessage(get(messageId).replace("\$type", status.getListName(language)))
+                    addMessage(S.YOUR_TASK)
+                    addTask(task)
+                }
+            }
+        } else tryDeleteTaskOr()
+    }
 
     val actionMap: Map<String, Handler> = mapOf(
             "calculator.sum" to { b -> b.sum() },

@@ -213,6 +213,8 @@ data class Bot(val language: String,
         sent = true
     }
 
+    fun setArgument(id: String, value: String?, contextName: String = USER_CONTEXT) = action.setArgument(id, value, contextName)
+
     fun getParam(param: String): Any? = action.getArgument(param)
 
     fun getParamWithContext(param: String, context: String = USER_CONTEXT, contextParam: String = param): Any? {
@@ -459,10 +461,14 @@ val DialogflowApp.query get() = request.body.result.resolvedQuery
 
 val logger get() = Bot.logger
 
-fun DialogflowApp.addArgument(id: String, value: String, contextName: String = USER_CONTEXT) {
-    val context = getContext(contextName)
-    context?.parameters?.put(id, value)
-    setContext(contextName, lifespan=100, parameters=context?.parameters ?: mutableMapOf<String, Any>(id to value))
+fun DialogflowApp.setArgument(id: String, value: String?, contextName: String = USER_CONTEXT) {
+    val params = getContext(contextName)?.parameters ?: mutableMapOf<String, Any>()
+    if (value == null) {
+        params.remove(id)
+    } else {
+        params[id] = value
+    }
+    setContext(contextName, lifespan=100, parameters=params)
 }
 
 private fun DialogflowApp.error(error: BotError, e: Exception) {

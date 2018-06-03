@@ -59,10 +59,7 @@ class TrelloTaskService(private val accessToken: String,
     }
 
     override fun Board.moveTask(trelloTask: Task, to: TaskStatus) {
-        val extras = parameters()
-        if (to == TaskStatus.DONE) {
-            extras.add("dueComplete" to "true")
-        }
+        val extras = parameters("dueComplete" to (to == TaskStatus.DONE).toString())
         statusLists[to]!!.moveCard(trelloTask.id, extras) // Requires getTasks called before
     }
 
