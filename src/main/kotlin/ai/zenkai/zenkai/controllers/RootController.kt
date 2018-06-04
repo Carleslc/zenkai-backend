@@ -367,7 +367,7 @@ class RootController(private val clockService: ClockService,
                 logger.info("End Date < Start Date")
                 end = start.toLocalDate().atTime(end.toLocalTime()).atZone(timezone)!!
             }
-            if (!endTimeSpecified && start.toLocalDate() != end.toLocalDate()) {
+            if (!endTimeSpecified && start.toLocalDate() == end.toLocalDate()) {
                 logger.info("end-time not specified -> end = start + 1h")
                 end = end.toLocalDate().atTime(start.toLocalTime()).plusHours(1).atZone(timezone)!!
             }
