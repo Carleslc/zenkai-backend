@@ -71,6 +71,8 @@ enum class S {
     CURRENT_TIME_SINGLE,
     CITY_NOT_FOUND,
     WEATHER,
+    ASK_TASK_DURATION,
+    TASK_DURATION_WARNING,
     YOUR_TASKS,
     YOUR_TASK,
     SOMEDAY_SINGLE,
@@ -130,7 +132,11 @@ enum class S {
     DURATION,
     NOW,
     UNTIL,
-    UNTIL_SINGLE;
+    UNTIL_SINGLE,
+    UNIT_DAY,
+    UNIT_HOUR,
+    UNIT_MINUTE,
+    UNIT_SECOND;
 }
 
 fun StringBuilder.append(id: S, locale: String) = append(i18n[id, locale])

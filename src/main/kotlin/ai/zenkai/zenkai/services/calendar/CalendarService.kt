@@ -13,7 +13,7 @@ import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.*
 
-const val IMPLICIT_START_OF_DAY_HOUR = 5
+const val IMPLICIT_START_OF_DAY_HOUR = 6
 const val IMPLICIT_AFTERNOON_HOUR = 8
 
 @Service

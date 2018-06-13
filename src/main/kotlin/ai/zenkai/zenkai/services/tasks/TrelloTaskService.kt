@@ -8,15 +8,19 @@ import ai.zenkai.zenkai.i18n.i18n
 import ai.zenkai.zenkai.i18n.toLocale
 import ai.zenkai.zenkai.model.Task
 import ai.zenkai.zenkai.model.TaskStatus
+import ai.zenkai.zenkai.services.calendar.HumanReadableDuration
+import ai.zenkai.zenkai.services.clock.ClockService
 import ai.zenkai.zenkai.services.parameters
 import ai.zenkai.zenkai.services.tasks.trello.*
 import me.carleslc.kotlin.extensions.standard.letOrElse
 import org.slf4j.LoggerFactory
 import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 
 class TrelloTaskService(private val accessToken: String,
                         private val tasksListener: TasksListener,
-                        private val zoneId: ZoneId) : TaskService {
+                        private val zoneId: ZoneId,
+                        private val clockService: ClockService) : TaskService {
 
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -54,7 +58,7 @@ class TrelloTaskService(private val accessToken: String,
 
     override fun Board.addTask(task: Task): Task {
         val statusList = board.getLists(openListsWithName()).withStatus(task.status)
-        val card = statusList.newCard(task.title, task.deadline?.atZone(zoneId), parameters("desc" to task.description, "pos" to "top"))
+        val card = statusList.newCard(task.titleWithDuration(), task.deadline?.atZone(zoneId), parameters("desc" to task.description, "pos" to "top"))
         return card.toTask(task.status)
     }
 
@@ -123,6 +127,14 @@ class TrelloTaskService(private val accessToken: String,
         return board
     }
 
-    private fun Card.toTask(status: TaskStatus) = Task(name!!, desc!!, status, due?.toLocalDateTime(), shortUrl, listOf(), id)
+    private fun Task.titleWithDuration(): String {
+        if (!duration.isZero) {
+            val formattedDuration = HumanReadableDuration.of(duration, language, precisionStart = ChronoUnit.DAYS, formatConfiguration = HumanReadableDuration.FormatConfiguration.single()).toString()
+            return "$title $formattedDuration"
+        }
+        return title
+    }
+
+    private fun Card.toTask(status: TaskStatus) = Task(clockService.removeDuration(name!!), desc!!, status, clockService.extractDuration(name), due?.toLocalDateTime(), shortUrl, listOf(), id)
 
 }

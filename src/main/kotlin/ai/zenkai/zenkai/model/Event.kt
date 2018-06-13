@@ -5,6 +5,7 @@ import ai.zenkai.zenkai.i18n.i18n
 import ai.zenkai.zenkai.services.calendar.CalendarService
 import ai.zenkai.zenkai.services.calendar.HumanReadableDuration
 import ai.zenkai.zenkai.services.clock.isSingleHour
+import me.carleslc.kotlin.extensions.standard.letIf
 import me.carleslc.kotlin.extensions.strings.isNotNullOrBlank
 import org.slf4j.LoggerFactory
 import java.time.ZonedDateTime
@@ -38,7 +39,9 @@ data class Event(val title: String,
                 appendln(prettyDateTime(end.toLocalDateTime(), language).capitalize())
             }
         }
-        append(i18n[S.DURATION, language]).append(": ").appendln(HumanReadableDuration(start, end, language, precision=ChronoUnit.MINUTES))
+        HumanReadableDuration.of(start, end, language).toString().letIf(String::isNotBlank) {
+            append(i18n[S.DURATION, language]).append(": ").appendln(it)
+        }
         if (location.isNotNullOrBlank()) {
             appendln(location)
         }

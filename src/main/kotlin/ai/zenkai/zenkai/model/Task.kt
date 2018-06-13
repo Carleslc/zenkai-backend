@@ -4,6 +4,9 @@ import ai.zenkai.zenkai.cleanFormat
 import ai.zenkai.zenkai.i18n.S
 import ai.zenkai.zenkai.i18n.i18n
 import ai.zenkai.zenkai.services.calendar.CalendarService
+import ai.zenkai.zenkai.services.calendar.HumanReadableDuration
+import me.carleslc.kotlin.extensions.standard.letIf
+import java.time.Duration
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.util.*
@@ -11,6 +14,7 @@ import java.util.*
 data class Task(val title: String,
                 val description: String,
                 val status: TaskStatus,
+                val duration: Duration,
                 val deadline: LocalDateTime? = null,
                 val url: String? = null,
                 val tags: List<String> = listOf(),
@@ -25,6 +29,9 @@ data class Task(val title: String,
 
     fun getDisplayText(language: String, zoneId: ZoneId, calendarService: CalendarService) = buildString {
         appendln(title)
+        HumanReadableDuration.of(duration, language).toString().letIf(String::isNotBlank) {
+            append(i18n[S.DURATION, language]).append(": ").appendln(it)
+        }
         deadline?.let {
             append(i18n[S.DEADLINE, language]).append(' ')
                     .appendln(calendarService.prettyApproxDateTime(deadline, zoneId, language))

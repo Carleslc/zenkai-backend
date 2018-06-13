@@ -13,6 +13,7 @@ import ai.zenkai.zenkai.services.calendar.CalendarService
 import ai.zenkai.zenkai.services.calendar.DatePeriod
 import ai.zenkai.zenkai.services.clock.ClockService
 import ai.zenkai.zenkai.services.clock.DEFAULT_TIME_ZONE
+import ai.zenkai.zenkai.services.clock.JsonDuration
 import ai.zenkai.zenkai.services.clock.toZoneIdOrThrow
 import ai.zenkai.zenkai.services.events.CalendarEventService
 import ai.zenkai.zenkai.services.events.CalendarListener
@@ -40,7 +41,9 @@ import javax.servlet.http.HttpServletResponse
 
 typealias Handler = (Bot) -> Unit
 
-const val USER_CONTEXT: String = "user-logged-in"
+const val USER_CONTEXT = "user-logged-in"
+const val TASK_ADD_CONTEXT = "tasksadd-followup"
+const val TASK_ASK_DURATION_CONTEXT = "tasksadd-duration-followup"
 
 data class Bot(val language: String,
                val timezone: ZoneId,
@@ -106,7 +109,7 @@ data class Bot(val language: String,
     }
 
     fun withTrello(block: TrelloTaskService.() -> Unit) = requireToken(TokenType.TRELLO) {
-        block(TrelloTaskService(it, this, timezone))
+        block(TrelloTaskService(it, this, timezone, clockService))
     }
 
     private fun needsLoginCalendar(auth: GoogleApiAuthorization) {
@@ -192,6 +195,7 @@ data class Bot(val language: String,
     fun logout(withMessages: Boolean = true) {
         requireToken(TokenType.TRELLO) { GoogleApiAuthorization(it).clear() }
         needsLogin(TokenType.TRELLO, false)
+        resetContext(USER_CONTEXT)
         if (withMessages) {
             addMessage(S.LOGOUT)
         }
@@ -200,7 +204,6 @@ data class Bot(val language: String,
     private fun send() {
         if (sent) return
         if (error == null) {
-            // TODO: Redirect with followupEvent instead clearing slot filling contexts
             action.completeTokensFilling(tokens)
         }
         action.fillAndSend(messages.firstOrNull()?.textToSpeech,
@@ -213,64 +216,51 @@ data class Bot(val language: String,
         sent = true
     }
 
+    fun isContext(contextName: String): Boolean = action.getContext(contextName)?.let { it.lifespan > 0 } ?: false
+
+    fun setContext(contextName: String, lifespan: Int = 1) = action.setContext(contextName, lifespan)
+
+    fun resetContext(contextName: String) = action.setContext(contextName, 0)
+
     fun setArgument(id: String, value: String?, contextName: String = USER_CONTEXT) = action.setArgument(id, value, contextName)
 
-    fun getParam(param: String): Any? = action.getArgument(param)
-
-    fun getParamWithContext(param: String, context: String = USER_CONTEXT, contextParam: String = param): Any? {
-        return getParam(param) ?: // try to get from parameters
-            action.getContextArgument(context, contextParam)?.value // otherwise try to get from context
+    fun getParam(param: String, context: String? = null, contextParam: String = param): Any? {
+        return action.getArgument(param) ?: // try to get from parameters
+            context?.let { action.getContextArgument(it, contextParam)?.value } // otherwise try to get from context
     }
 
-    fun getStringWithContext(param: String, context: String = USER_CONTEXT, contextParam: String = param): String? {
-        val retrieved = getParamWithContext(param, context, contextParam)?.toString()
+    fun getString(param: String, context: String? = null, contextParam: String = param): String? {
+        val retrieved = getParam(param, context, contextParam)?.toString()
         return if (retrieved.isNullOrBlank()) null else retrieved
     }
 
-    fun getString(param: String): String? {
-        val retrieved = getParam(param)?.toString()
-        return if (retrieved.isNullOrBlank()) null else retrieved
-    }
-
-    fun getNestedString(keys: Pair<String, String>): String? {
-        val param = getParam(keys.first) ?: return null
+    fun getNestedString(keys: Pair<String, String>, context: String? = null): String? {
+        val param = getParam(keys.first, context) ?: return null
         return if (param is Map<*,*>) param[keys.second]?.toString() else param.toString()
     }
 
-    fun getDoubleWithContext(param: String, context: String = USER_CONTEXT): Double {
-        return getStringWithContext(param, context)?.toDouble() ?: 0.toDouble()
-    }
-
-    fun getDouble(param: String): Double = getString(param)?.toDouble() ?: 0.toDouble()
+    fun getDouble(param: String, context: String? = null, contextParam: String = param): Double = getString(param, context, contextParam)?.toDouble() ?: 0.toDouble()
 
     private fun String?.parseDate(): LocalDate? = orEmpty()
             .letIf(String::isNotEmpty, { calendarService.parse(it) }, { null })
 
-    fun getDate(param: String): LocalDate? {
-        val date = getString(param).parseDate()
+    fun getDate(param: String, implicit: Boolean = true, context: String? = null, contextParam: String = param): LocalDate? {
+        val date = getString(param, context, contextParam).parseDate()
         val dateOriginal = getString("$param-original")
-        return if (date != null) {
+        return if (implicit && date != null) {
             calendarService.implicitDate(ZonedDateTime.now(timezone), date, dateOriginal, language)
         } else date
-    }
-
-    fun getDateWithContext(param: String, context: String = USER_CONTEXT): LocalDate? {
-        return getStringWithContext(param, context).parseDate()
     }
 
     private fun String?.parseTime(): LocalTime? = orEmpty()
             .letIf(String::isNotEmpty, { clockService.parse(it) }, { null })
 
-    fun getTime(param: String): LocalTime? {
-        val time = getString(param).parseTime()
+    fun getTime(param: String, implicit: Boolean = true, context: String? = null, contextParam: String = param): LocalTime? {
+        val time = getString(param, context, contextParam).parseTime()
         val timeOriginal = getString("$param-original")
-        return if (time != null) {
+        return if (implicit && time != null) {
             calendarService.implicitTime(ZonedDateTime.now(timezone), time, timeOriginal, language)
         } else time
-    }
-
-    fun getTimeWithContext(param: String, context: String = USER_CONTEXT): LocalTime? {
-        return getStringWithContext(param, context).parseTime()
     }
 
     private fun Pair<LocalDate?, LocalTime?>.parseDateTime(defaultDate: LocalDate? = null, defaultTime: LocalTime? = null): LocalDateTime? {
@@ -279,17 +269,8 @@ data class Bot(val language: String,
         return (date ?: defaultDate ?: calendarService.today(timezone)).atTime(time ?: defaultTime ?: LocalTime.MIDNIGHT.withSecond(0))
     }
 
-    fun getDateTime(dateParam: String, timeParam: String, defaultDate: LocalDate? = null, defaultTime: LocalTime? = null): ZonedDateTime? {
-        val datetime = (getDate(dateParam) to getTime(timeParam)).parseDateTime(defaultDate, defaultTime)?.atZone(timezone)
-        val dateOriginal = getString("$dateParam-original")
-        val timeOriginal = getString("$timeParam-original")
-        return if (datetime != null) {
-            calendarService.implicitDateTime(ZonedDateTime.now(timezone), datetime, dateOriginal, timeOriginal, language)
-        } else datetime
-    }
-
-    fun getDateTimeWithContext(dateParam: String, timeParam: String, defaultDate: LocalDate? = null, defaultTime: LocalTime? = null, context: String = USER_CONTEXT): LocalDateTime? {
-        return (getDateWithContext(dateParam, context) to getTimeWithContext(timeParam, context)).parseDateTime(defaultDate, defaultTime)
+    fun getDateTime(dateParam: String, timeParam: String, defaultDate: LocalDate? = null, defaultTime: LocalTime? = null, implicit: Boolean = true, context: String? = null): ZonedDateTime? {
+        return (getDate(dateParam, implicit, context) to getTime(timeParam, implicit, context)).parseDateTime(defaultDate, defaultTime)?.atZone(timezone)
     }
 
     private fun Any?.parseDatePeriod(): DatePeriod? {
@@ -301,19 +282,31 @@ data class Bot(val language: String,
         } else DatePeriod.parse(arg.toString(), calendarService)
     }
 
-    fun getDatePeriod(param: String): DatePeriod? = getParam(param).parseDatePeriod()
+    fun getDatePeriod(param: String, context: String? = null, contextParam: String = param): DatePeriod? = getParam(param, context, contextParam).parseDatePeriod()
 
-    fun getDatePeriodWithContext(param: String, context: String = USER_CONTEXT): DatePeriod? {
-        return getStringWithContext(param, context).parseDatePeriod()
+    private fun parseDuration(param: String, context: String? = null, contextParam: String = param): Duration? {
+        return getString(param, context, contextParam)?.let { gson.fromJson(it, JsonDuration::class.java).toDuration(language) }
     }
 
-    fun isValid(title: String?): Boolean {
-        if (title != null) {
-            val cancelled = title.equals(i18n[S.CANCEL, language], true)
-            if (cancelled) {
-                addMessage(S.CANCELLED)
-            }
-            return !cancelled
+    private fun getDurationFrom(first: Duration?, second: Duration?): Duration? {
+        var duration = first
+        var duration2 = second
+        if (duration2 != null && duration == null) {
+            duration = duration2
+            duration2 = null
+        }
+        if (duration != null && duration2 != null) {
+            duration = duration.plus(duration2)
+        }
+        return duration
+    }
+
+    fun getDuration(param: String, param2: String = param + "2", context: String? = null): Duration? = getDurationFrom(parseDuration(param, context), parseDuration(param2, context))
+
+    fun isCancelled(s: String?): Boolean {
+        if (s.equals(i18n[S.CANCEL, language], true)) {
+            addMessage(S.CANCELLED)
+            return true
         }
         return false
     }

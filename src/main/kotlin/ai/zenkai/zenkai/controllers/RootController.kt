@@ -25,7 +25,9 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RestController
 import java.time.DayOfWeek
+import java.time.Duration
 import java.time.ZonedDateTime
+import java.time.temporal.ChronoUnit
 import javax.servlet.http.HttpServletRequest
 import javax.servlet.http.HttpServletResponse
 
@@ -223,56 +225,86 @@ class RootController(private val clockService: ClockService,
         }
     }
 
-    fun Bot.addTask() = withTrello {
-        val title = getString("task-title")
-        if (isValid(title)) {
-            val taskType = getString("task-type")
-            val deadline = getDateTime("date", "time")
-            val status = TaskStatus.parse(taskType)
-            val description = query
-            var task = Task(title!!.capitalize(), description, status, deadline?.toLocalDateTime())
-            val messageId: S
-            val tasks = getDefaultBoard().getAllTasks(null)
-            val matchTask = tasks.find { it.isSimilar(task, locale) }
-            val alreadyAdded = matchTask?.status == status
-            var movedFrom: TaskStatus? = null
-            if (matchTask != null) {
-                task = matchTask
-                messageId = if (alreadyAdded) {
-                    S.ALREADY_ADDED
-                } else {
-                    movedFrom = task.status
-                    getDefaultBoard().moveTask(task, status)
-                    S.MOVED_TASK
-                }
+    private fun Bot.askTaskDuration(): Duration? {
+        var askDuration = false
+        var duration = getDuration("duration")
+        if (duration == null) {
+            val queryDuration = clockService.extractDuration(query)
+            if (!queryDuration.isZero) {
+                duration = queryDuration
+            } else if (!isContext(TASK_ASK_DURATION_CONTEXT)) {
+                setContext(TASK_ASK_DURATION_CONTEXT)
+                addMessage(S.ASK_TASK_DURATION)
+                askDuration = true
             } else {
-                task = getDefaultBoard().addTask(task)
-                messageId = S.ADDED_TASK
+                duration = Duration.of(1, ChronoUnit.HOURS)
             }
-            addMessage(get(messageId).replace("\$type", status.getListName(language)))
-            if (!alreadyAdded) {
-                if (status == TODO) {
-                    checkSomedayWarning(1 + tasks.count { it.status == TODO }, { tasks.count { it.status == SOMEDAY } })
-                } else if (status == DOING) {
-                    checkMultitasking(1 + tasks.count { it.status == DOING })
-                } else if (status == DONE) {
-                    val doneTasksSize = 1 + tasks.count { it.status == DONE }
-                    if (doneTasksSize == 1 || doneTasksSize % 5 == 0) {
-                        addTaskMessage(DONE, doneTasksSize)
+        }
+        if (!askDuration) {
+            resetContext(TASK_ASK_DURATION_CONTEXT)
+        }
+        return duration
+    }
+
+    fun Bot.addTask() = withTrello {
+        val title = getString("task-title", TASK_ADD_CONTEXT)
+        if (title != null && !isCancelled(query)) {
+            askTaskDuration()?.let {
+                val duration = it
+                val taskType = getString("task-type", TASK_ADD_CONTEXT)
+                var deadline = getDateTime("date", "time", context = TASK_ADD_CONTEXT)
+                if (deadline != null && deadline < ZonedDateTime.now(timezone)) {
+                    deadline = getDateTime("date", "time", context = TASK_ADD_CONTEXT, implicit = false)
+                }
+                val status = TaskStatus.parse(taskType)
+                val description = query
+                var task = Task(title.capitalize(), description, status, duration, deadline?.toLocalDateTime())
+                val messageId: S
+                val tasks = getDefaultBoard().getAllTasks(null)
+                val matchTask = tasks.find { it.isSimilar(task, locale) }
+                val alreadyAdded = matchTask?.status == status
+                var movedFrom: TaskStatus? = null
+                if (matchTask != null) {
+                    task = matchTask
+                    messageId = if (alreadyAdded) {
+                        S.ALREADY_ADDED
+                    } else {
+                        movedFrom = task.status
+                        getDefaultBoard().moveTask(task, status)
+                        S.MOVED_TASK
+                    }
+                } else {
+                    task = getDefaultBoard().addTask(task)
+                    messageId = S.ADDED_TASK
+                }
+                addMessage(get(messageId).replace("\$type", status.getListName(language).capitalize()))
+                if (!alreadyAdded) {
+                    if (duration.toHours() > 8) {
+                        addMessage(S.TASK_DURATION_WARNING)
+                    }
+                    if (status == TODO) {
+                        checkSomedayWarning(1 + tasks.count { it.status == TODO }, { tasks.count { it.status == SOMEDAY } })
+                    } else if (status == DOING) {
+                        checkMultitasking(1 + tasks.count { it.status == DOING })
+                    } else if (status == DONE) {
+                        val doneTasksSize = 1 + tasks.count { it.status == DONE }
+                        if (doneTasksSize == 1 || doneTasksSize % 5 == 0) {
+                            addTaskMessage(DONE, doneTasksSize)
+                        }
                     }
                 }
+                setArgument("moved-from", movedFrom?.toString())
+                addMessage(S.YOUR_TASK)
+                addTask(task)
             }
-            setArgument("moved-from", movedFrom?.toString())
-            addMessage(S.YOUR_TASK)
-            addTask(task)
         }
     }
 
     private fun Bot.tryDeleteTaskOr(notFoundBlock: Bot.() -> Unit = {}) = withTrello {
         val title = getString("title")
-        if (isValid(title)) {
+        if (title != null) {
             val tasks = getDefaultBoard().getAllTasks(comparator = compareBy<Task> { it.title.length })
-            val task = tasks.find { it.hasSimilarTitle(title!!.cleanFormat(locale), locale) }
+            val task = tasks.find { it.hasSimilarTitle(title.cleanFormat(locale), locale) }
             if (task != null) {
                 getDefaultBoard().archiveTask(task)
                 addMessage(S.TASK_DELETED)
@@ -286,8 +318,8 @@ class RootController(private val clockService: ClockService,
 
     private fun Bot.tryDeleteEventOr(notFoundBlock: Bot.() -> Unit = {}) = withCalendar {
         val title = getString("title")
-        if (isValid(title)) {
-            val event = findEvent(title!!.capitalize())
+        if (title != null) {
+            val event = findEvent(title.capitalize())
             if (event != null) {
                 removeEvent(event)
                 addMessage(S.EVENT_DELETED)
@@ -352,7 +384,7 @@ class RootController(private val clockService: ClockService,
         logger.info("Title: $title")
         logger.info("Start: $start (Original $startDateOriginal / $startTimeOriginal)")
         logger.info("End:   $end (Original $endDateOriginal / $endTimeOriginal)")
-        if (isValid(title) && start != null && end != null) {
+        if (title != null && start != null && end != null && !isCancelled(query)) {
             start = calendarService.implicitDateTime(now, start, startDateOriginal, startTimeOriginal, language)
             end = calendarService.implicitDateTime(now, end, endDateOriginal ?: startDateOriginal, endTimeOriginal, language)
             if (start < now.minusMinutes(1)) {
@@ -377,7 +409,7 @@ class RootController(private val clockService: ClockService,
             }
             logger.info("Start Finish: $start")
             logger.info("End Finish:   $end")
-            val event = createEvent(Event(title!!.capitalize(), start, end, query, location))
+            val event = createEvent(Event(title.capitalize(), start, end, query, location))
             addMessages(S.ADDED_EVENT, S.YOUR_EVENT)
             addEvent(event)
         }
@@ -413,11 +445,11 @@ class RootController(private val clockService: ClockService,
     fun Bot.rollbackTaskAdd() {
         val moved = getString("moved-from")
         val title = getString("title")
-        if (moved != null && isValid(title)) {
+        if (moved != null && title != null) {
             withTrello {
                 val status = TaskStatus.valueOf(moved)
                 val tasks = getDefaultBoard().getAllTasks(null)
-                val task = tasks.find { it.hasSimilarTitle(title!!.cleanFormat(locale), locale) }
+                val task = tasks.find { it.hasSimilarTitle(title.cleanFormat(locale), locale) }
                 if (task != null) {
                     val messageId = if (task.status == status) {
                         S.ALREADY_ADDED
@@ -426,7 +458,7 @@ class RootController(private val clockService: ClockService,
                         setArgument("moved-from", task.status.toString())
                         S.MOVED_TASK
                     }
-                    addMessage(get(messageId).replace("\$type", status.getListName(language)))
+                    addMessage(get(messageId).replace("\$type", status.getListName(language).capitalize()))
                     addMessage(S.YOUR_TASK)
                     addTask(task)
                 }
