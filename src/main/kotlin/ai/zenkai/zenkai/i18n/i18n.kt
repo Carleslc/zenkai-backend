@@ -136,7 +136,14 @@ enum class S {
     UNIT_DAY,
     UNIT_HOUR,
     UNIT_MINUTE,
-    UNIT_SECOND;
+    UNIT_SECOND,
+    NO_SCHEDULED,
+    NO_TASKS_SCHEDULE,
+    SCHEDULED,
+    SCHEDULED_SINGLE,
+    AUTO_SCHEDULED_ID,
+    REMOVED_SCHEDULING,
+    PAST_SCHEDULE_DATE;
 }
 
 fun StringBuilder.append(id: S, locale: String) = append(i18n[id, locale])

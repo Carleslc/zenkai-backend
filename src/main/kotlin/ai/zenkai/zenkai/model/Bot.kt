@@ -11,15 +11,14 @@ import ai.zenkai.zenkai.i18n.toLocale
 import ai.zenkai.zenkai.nullIfBlank
 import ai.zenkai.zenkai.services.calendar.CalendarService
 import ai.zenkai.zenkai.services.calendar.DatePeriod
-import ai.zenkai.zenkai.services.clock.ClockService
-import ai.zenkai.zenkai.services.clock.DEFAULT_TIME_ZONE
-import ai.zenkai.zenkai.services.clock.JsonDuration
-import ai.zenkai.zenkai.services.clock.toZoneIdOrThrow
-import ai.zenkai.zenkai.services.events.CalendarEventService
+import ai.zenkai.zenkai.services.clock.*
 import ai.zenkai.zenkai.services.events.CalendarListener
+import ai.zenkai.zenkai.services.events.EventService
+import ai.zenkai.zenkai.services.events.GoogleCalendarEventService
+import ai.zenkai.zenkai.services.tasks.Board
+import ai.zenkai.zenkai.services.tasks.TaskService
 import ai.zenkai.zenkai.services.tasks.TasksListener
 import ai.zenkai.zenkai.services.tasks.TrelloTaskService
-import ai.zenkai.zenkai.services.tasks.trello.Board
 import arrow.data.Try
 import arrow.data.getOrElse
 import com.google.api.client.googleapis.json.GoogleJsonResponseException
@@ -44,6 +43,7 @@ typealias Handler = (Bot) -> Unit
 const val USER_CONTEXT = "user-logged-in"
 const val TASK_ADD_CONTEXT = "tasksadd-followup"
 const val TASK_ASK_DURATION_CONTEXT = "tasksadd-duration-followup"
+const val TASK_READ_CONTEXT = "tasksread-followup"
 
 data class Bot(val language: String,
                val timezone: ZoneId,
@@ -108,7 +108,7 @@ data class Bot(val language: String,
         addMessage(if (obj.isNull()) default else fill(obj!!))
     }
 
-    fun withTrello(block: TrelloTaskService.() -> Unit) = requireToken(TokenType.TRELLO) {
+    fun withTasks(block: TaskService.() -> Unit) = requireToken(TokenType.TRELLO) {
         block(TrelloTaskService(it, this, timezone, clockService))
     }
 
@@ -126,9 +126,9 @@ data class Bot(val language: String,
         }
     }
 
-    fun withCalendar(block: CalendarEventService.() -> Unit) = withCalendarAuth {
+    fun withEvents(block: EventService.() -> Unit) = withCalendarAuth {
         try {
-            val calendar = CalendarEventService(getCalendar()!!, timezone, language, this@Bot).configure()
+            val calendar = GoogleCalendarEventService(getCalendar()!!, timezone, language, this@Bot).configure()
             if (!sent) { // calendar listener not called
                 block(calendar)
             }
@@ -139,7 +139,15 @@ data class Bot(val language: String,
         }
     }
 
-    fun login() = withTrello {
+    fun withTasksEvents(block: (TaskService, EventService) -> Unit) = withTasks {
+        val taskService = this
+        withEvents {
+            val eventService = this
+            block(taskService, eventService)
+        }
+    }
+
+    fun login() = withTasks {
         loginIfTokenSuccess(true)
     }
 
@@ -216,7 +224,7 @@ data class Bot(val language: String,
         sent = true
     }
 
-    fun isContext(contextName: String): Boolean = action.getContext(contextName)?.let { it.lifespan > 0 } ?: false
+    fun isContext(contextName: String) = action.getContext(contextName) != null
 
     fun setContext(contextName: String, lifespan: Int = 1) = action.setContext(contextName, lifespan)
 
@@ -273,6 +281,17 @@ data class Bot(val language: String,
         return (getDate(dateParam, implicit, context) to getTime(timeParam, implicit, context)).parseDateTime(defaultDate, defaultTime)?.atZone(timezone)
     }
 
+    fun getTimePeriod(startParam: String, endParam: String, timePeriod: String? = null, implicit: Boolean = true, context: String? = null): TimePeriod? {
+        val period = timePeriod?.let { getString(it, context) }
+        val start = getTime(startParam, implicit, context)
+        val end = getTime(endParam, implicit, context)
+        return if (start != null && end != null) {
+            TimePeriod(start, end)
+        } else if (period != null) {
+            TimePeriod.parse(period)
+        } else null
+    }
+
     private fun Any?.parseDatePeriod(): DatePeriod? {
         val arg = this ?: return null
         return if (arg is Map<*,*>) {
@@ -317,7 +336,7 @@ data class Bot(val language: String,
 
     override fun onNewBoard(board: Board) {
         addMessage(S.NEW_BOARD)
-        addText(board.shortUrl!!)
+        board.getAccessUrl()?.let { addText(it) }
     }
 
     override fun onNewCalendar() {

@@ -3,7 +3,7 @@ package ai.zenkai.zenkai.controllers.auth
 import ai.zenkai.zenkai.exceptions.badRequest
 import ai.zenkai.zenkai.i18n.i18n
 import ai.zenkai.zenkai.services.clock.toZoneIdOrThrow
-import ai.zenkai.zenkai.services.events.CalendarEventService
+import ai.zenkai.zenkai.services.events.GoogleCalendarEventService
 import com.google.gson.Gson
 import me.carleslc.kotlin.extensions.standard.letOrElse
 import org.springframework.beans.factory.annotation.Autowired
@@ -12,7 +12,6 @@ import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
-import java.util.*
 import javax.servlet.http.HttpServletRequest
 import javax.servlet.http.HttpServletResponse
 
@@ -53,7 +52,7 @@ class GoogleApiAuthorizationController {
             renderHtml(res, SUCCESS)
             taskExecutor?.execute({ // create a new default calendar if not exists
                 auth.getCalendar()?.let {
-                    CalendarEventService(it,
+                    GoogleCalendarEventService(it,
                             timezone.toZoneIdOrThrow(),
                             i18n.ensureLanguage(language)).configure()
                 }

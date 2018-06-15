@@ -18,19 +18,19 @@ open class Trello(private val applicationKey: String, private val userToken: Str
 
     final override fun getMe(params: Parameters): Member = getMember("me", params)
 
-    final override fun getBoards(memberId: String, params: Parameters): List<Board> {
-        return attachService(getList(getUrl(MEMBER_BOARDS, params), Board::class, params.withId(memberId).withKeyToken()))
+    final override fun getBoards(memberId: String, params: Parameters): List<TrelloBoard> {
+        return attachService(getList(getUrl(MEMBER_BOARDS, params), TrelloBoard::class, params.withId(memberId).withKeyToken()))
     }
 
-    final override fun getMyBoards(params: Parameters): List<Board> = getBoards("me", params)
+    final override fun getMyBoards(params: Parameters): List<TrelloBoard> = getBoards("me", params)
 
-    final override fun getBoard(boardId: String, params: Parameters): Board {
-        return attachService(get(getUrl(BOARD, params), Board::class, params.withId(boardId).withKeyToken()))
+    final override fun getBoard(boardId: String, params: Parameters): TrelloBoard {
+        return attachService(get(getUrl(BOARD, params), TrelloBoard::class, params.withId(boardId).withKeyToken()))
     }
 
-    final override fun newBoard(name: String, params: Parameters): Board {
+    final override fun newBoard(name: String, params: Parameters): TrelloBoard {
         val richParams = params.add("name" to name)
-        return attachService(post(getUrl(BOARDS, richParams), Board::class, richParams.withKeyToken()))
+        return attachService(post(getUrl(BOARDS, richParams), TrelloBoard::class, richParams.withKeyToken()))
     }
 
     final override fun newList(boardId: String, name: String, params: Parameters): TrelloList {

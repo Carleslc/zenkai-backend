@@ -2,11 +2,12 @@ package ai.zenkai.zenkai.services.tasks.trello
 
 import ai.zenkai.zenkai.services.Parameters
 import ai.zenkai.zenkai.services.parameters
+import ai.zenkai.zenkai.services.tasks.Board
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import java.time.ZonedDateTime
 
 @JsonIgnoreProperties(ignoreUnknown = true)
-data class Board(val id: String,
+data class TrelloBoard(val id: String,
                  val name: String?,
                  val desc: String?,
                  val closed: Boolean?,
@@ -22,7 +23,7 @@ data class Board(val id: String,
                  val subscribed: Boolean?,
                  val dateLastView: ZonedDateTime?,
                  val shortUrl: String?,
-                 var lists: List<TrelloList>?) : TrelloEntity() {
+                 var lists: List<TrelloList>?) : Board, TrelloEntity() {
 
     fun newList(name: String, params: Parameters = parameters()) = service.newList(id, name, params)
 
@@ -34,6 +35,8 @@ data class Board(val id: String,
     }
 
     fun enablePowerUp(powerUpId: String) = service.enablePowerUp(id, powerUpId)
+
+    override fun getAccessUrl() = shortUrl
 
     override fun attachService(service: Trello) {
         super.attachService(service)

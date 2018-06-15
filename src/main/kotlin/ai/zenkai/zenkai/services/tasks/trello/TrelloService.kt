@@ -14,13 +14,13 @@ interface TrelloService : Service {
 
     fun getMe(params: Parameters = parameters()): Member
 
-    fun getBoard(boardId: String, params: Parameters = parameters()): Board
+    fun getBoard(boardId: String, params: Parameters = parameters()): TrelloBoard
 
-    fun getBoards(memberId: String, params: Parameters = parameters()): List<Board>
+    fun getBoards(memberId: String, params: Parameters = parameters()): List<TrelloBoard>
 
-    fun getMyBoards(params: Parameters = parameters()): List<Board>
+    fun getMyBoards(params: Parameters = parameters()): List<TrelloBoard>
 
-    fun newBoard(name: String, params: Parameters = parameters()): Board
+    fun newBoard(name: String, params: Parameters = parameters()): TrelloBoard
 
     fun newList(boardId: String, name: String, params: Parameters = parameters()): TrelloList
 

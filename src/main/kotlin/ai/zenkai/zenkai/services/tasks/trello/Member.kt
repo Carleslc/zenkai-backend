@@ -25,7 +25,7 @@ data class Member(val id: String,
                   val loginTypes: List<String>?,
                   val products: List<Int>?,
                   val prefs: Preferences?,
-                  val boards: List<Board>?,
+                  val boards: List<TrelloBoard>?,
                   val cards: List<Card>?) : TrelloEntity() {
 
     fun getLocale(): Locale? = prefs?.let { Locale(it.locale) }

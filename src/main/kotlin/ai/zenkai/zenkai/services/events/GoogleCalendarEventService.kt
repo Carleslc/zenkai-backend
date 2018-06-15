@@ -19,11 +19,10 @@ import java.util.*
 import com.google.api.services.calendar.Calendar as GoogleCalendarService
 import com.google.api.services.calendar.model.Event as ServiceEvent
 
-
-class CalendarEventService(private val service: GoogleCalendarService,
-                           private val timezone: ZoneId,
-                           private val language: String,
-                           private val calendarListener: CalendarListener? = null) : EventService {
+class GoogleCalendarEventService(private val service: GoogleCalendarService,
+                                 private val timezone: ZoneId,
+                                 private val language: String,
+                                 private val calendarListener: CalendarListener? = null) : EventService {
 
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -31,7 +30,7 @@ class CalendarEventService(private val service: GoogleCalendarService,
 
     private lateinit var defaultCalendarId: String
 
-    fun configure(): CalendarEventService {
+    fun configure(): GoogleCalendarEventService {
         defaultCalendarId = URLDecoder.decode(findDefaultCalendar().id, "UTF-8")
         return this
     }
@@ -45,21 +44,26 @@ class CalendarEventService(private val service: GoogleCalendarService,
     }
 
     override fun createEvent(event: Event): Event {
-        return service.events().insert(defaultCalendarId, event.toServiceEvent()).setFields(EVENT_FIELDS).execute().toEvent(timezone)
+        return createServiceEvent(event).execute().toEvent(timezone)
     }
 
     override fun createEvent(eventQuery: String): Event {
         return service.events().quickAdd(defaultCalendarId, eventQuery).setFields(EVENT_FIELDS).execute().toEvent(timezone)
     }
 
-    override fun findEvent(title: String): Event? {
-        return service.events().list(defaultCalendarId)
-                    .setQ(title)
-                    .setTimeMin(ZonedDateTime.now(timezone).toDateTime())
-                    .setTimeZone(timezone.id)
-                    .setFields("items($EVENT_FIELDS)")
-                    .execute().items.sortedBy { it.start.dateTime.value }.firstOrNull()?.toEvent(timezone)
+    override fun createEvents(events: Collection<Event>): List<Event> {
+        val merge = BatchEvent(timezone)
+        val batch = service.multiBatch(merge)
+        events.forEach {
+            createServiceEvent(it).queue(batch)
+        }
+        batch.execute()
+        return merge.sorted { it.start }
     }
+
+    override fun findEvent(query: String) = findServiceEvents(query).firstOrNull()?.toEvent(timezone)
+
+    override fun findEvents(query: String) = findServiceEvents(query).map { it.toEvent(timezone) }
 
     override fun removeEvent(event: Event) {
         event.id?.let {
@@ -67,22 +71,45 @@ class CalendarEventService(private val service: GoogleCalendarService,
         }
     }
 
-    fun getEvents(start: LocalDateTime? = null, end: LocalDateTime? = null, maxResults: Int? = null): List<Event> {
-        val batch = service.batch()
+    override fun removeEvents(ids: Collection<String>) {
+        val batch = service.multiBatch(BatchEventsVoid())
+        ids.forEach {
+            service.events().delete(defaultCalendarId, it).queue(batch)
+        }
+        batch.execute()
+    }
+
+    override fun removeEvents(query: String) = removeEvents(findServiceEvents(query, false).map { it.id })
+
+    override fun getEvents(start: LocalDateTime?, end: LocalDateTime?, maxResults: Int?): List<Event> {
         val merge = BatchEvents(timezone)
+        val batch = service.multiBatch(merge)
+        val now = ZonedDateTime.now(timezone)
         calendars.forEach {
             service.events().list(it.id)
-                .setTimeMin(start.shiftToday(timezone).toDateTime())
+                .setTimeMin(start.shiftToday(now).toDateTime())
                 .setTimeZone(timezone.id)
                 .setOrderBy("startTime")
                 .setSingleEvents(true)
                 .alsoIf({ end.isNotNull() }) { it.timeMax = end!!.toDateTime(timezone) }
                 .alsoIf({ maxResults.isNotNull() }) { it.maxResults = maxResults }
                 .setFields("items($EVENT_FIELDS)")
-                .queue(batch, merge)
+                .queue(batch)
         }
         batch.execute()
         return merge.sorted(maxResults) { it.start }
+    }
+
+    private fun createServiceEvent(event: Event) = service.events().insert(defaultCalendarId, event.toServiceEvent()).setFields(EVENT_FIELDS)
+
+    private fun findServiceEvents(query: String, sorted: Boolean = true): List<ServiceEvent> {
+        val events = service.events().list(defaultCalendarId)
+                .setQ(query)
+                .setTimeMin(ZonedDateTime.now(timezone).toDateTime())
+                .setTimeZone(timezone.id)
+                .setFields("items($EVENT_FIELDS)")
+                .execute().items
+        return if (sorted) events.sortedBy { it.start.dateTime.value } else events
     }
 
     private fun findDefaultCalendar(): CalendarListEntry {
@@ -133,7 +160,7 @@ class CalendarEventService(private val service: GoogleCalendarService,
 
 }
 
-private fun CalendarListEntry.isDefaultCalendar() = summary.equals(CalendarEventService.DEFAULT_CALENDAR_NAME, true)
+private fun CalendarListEntry.isDefaultCalendar() = summary.equals(GoogleCalendarEventService.DEFAULT_CALENDAR_NAME, true)
 
 private fun LocalDateTime.toDateTime(zoneId: ZoneId) = DateTime(toDate(zoneId), TimeZone.getTimeZone(zoneId))
 
@@ -141,7 +168,7 @@ private fun ZonedDateTime.toDateTime() = toLocalDateTime().toDateTime(zone)
 
 private fun DateTime.toZonedDateTime() = ZonedDateTime.ofInstant(Instant.ofEpochMilli(value), ZoneOffset.ofTotalSeconds(timeZoneShift/1000))
 
-private fun ServiceEvent.toEvent(timezone: ZoneId) = Event(summary.orEmpty(), start.dateTime.toZonedDateTime().withOffset(timezone), end.dateTime.toZonedDateTime().withOffset(timezone), description.orEmpty(), location, htmlLink, id)
+internal fun ServiceEvent.toEvent(timezone: ZoneId) = Event(summary.orEmpty(), start.dateTime.toZonedDateTime().withOffset(timezone), end.dateTime.toZonedDateTime().withOffset(timezone), description.orEmpty(), location, htmlLink, id)
 
 internal fun List<ServiceEvent>.toEvents(timezone: ZoneId): List<Event> = map { it.toEvent(timezone) }
 

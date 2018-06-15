@@ -28,7 +28,7 @@ class TrelloTaskService(private val accessToken: String,
 
     private val defaultBoardName by lazy { i18n[S.DEFAULT_BOARD_NAME, language] }
 
-    private val board by lazy { findDefaultBoard() }
+    private val board: TrelloBoard by lazy { findDefaultBoard() }
 
     private lateinit var language: String
 
@@ -36,11 +36,15 @@ class TrelloTaskService(private val accessToken: String,
 
     val member: Member = retrieveMe()
 
-    override fun Board.getReadableTasks(status: TaskStatus, comparator: Comparator<Task>?): List<Task> {
+    override fun getTodoTasks(comparator: Comparator<Task>?): List<Task> {
+        return getTasks(TaskStatus.getTodoListNames(language), comparator)
+    }
+
+    override fun getReadableTasks(status: TaskStatus, comparator: Comparator<Task>?): List<Task> {
         return getTasks(status.getReadableListNames(language), comparator)
     }
 
-    override fun Board.getAllTasks(comparator: Comparator<Task>?): List<Task> {
+    override fun getAllTasks(comparator: Comparator<Task>?): List<Task> {
         return getTasks(TaskStatus.getListNames(language), comparator)
     }
 
@@ -56,22 +60,22 @@ class TrelloTaskService(private val accessToken: String,
         return comparator.letOrElse(tasks) { tasks.sortedWith(it) }
     }
 
-    override fun Board.addTask(task: Task): Task {
+    override fun createTask(task: Task): Task {
         val statusList = board.getLists(openListsWithName()).withStatus(task.status)
         val card = statusList.newCard(task.titleWithDuration(), task.deadline?.atZone(zoneId), parameters("desc" to task.description, "pos" to "top"))
         return card.toTask(task.status)
     }
 
-    override fun Board.moveTask(trelloTask: Task, to: TaskStatus) {
+    override fun moveTask(trelloTask: Task, to: TaskStatus) {
         val extras = parameters("dueComplete" to (to == TaskStatus.DONE).toString())
         statusLists[to]!!.moveCard(trelloTask.id, extras) // Requires getTasks called before
     }
 
-    override fun Board.archiveTask(trelloTask: Task) {
+    override fun archiveTask(trelloTask: Task) {
         trello.archiveCard(trelloTask.id) // Requires getTasks called before
     }
 
-    fun getDefaultBoard() = board
+    override fun getDefaultBoard(): Board = board
 
     private fun List<TrelloList>.filter(names: Map<String, TaskStatus>): List<TrelloList> {
         val locale = language.toLocale()
@@ -101,10 +105,10 @@ class TrelloTaskService(private val accessToken: String,
         return me
     }
 
-    private fun findDefaultBoard(): Board {
+    private fun findDefaultBoard(): TrelloBoard {
         val zenkaiBoard = member.boards!!.find { it.name == defaultBoardName }
         logger.info("Zenkai Board: $zenkaiBoard")
-        return zenkaiBoard ?: newDefaultBoard()
+        return zenkaiBoard ?: newDefaultBoard() as TrelloBoard
     }
 
     private fun newDefaultBoard(): Board {
@@ -129,6 +133,7 @@ class TrelloTaskService(private val accessToken: String,
 
     private fun Task.titleWithDuration(): String {
         if (!duration.isZero) {
+            val title = clockService.removeDuration(this.title)
             val formattedDuration = HumanReadableDuration.of(duration, language, precisionStart = ChronoUnit.DAYS, formatConfiguration = HumanReadableDuration.FormatConfiguration.single()).toString()
             return "$title $formattedDuration"
         }

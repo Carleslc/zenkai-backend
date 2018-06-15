@@ -150,8 +150,8 @@ fun LocalDate.atEndOfWeek(): LocalDate {
     return plusDays(offset)
 }
 
-fun LocalDateTime?.shiftToday(zoneId: ZoneId, from: ZonedDateTime = ZonedDateTime.now(zoneId)): ZonedDateTime {
-    var dateTime: ZonedDateTime = this?.atZone(zoneId) ?: from
+fun LocalDateTime?.shiftToday(from: ZonedDateTime): ZonedDateTime {
+    var dateTime: ZonedDateTime = this?.atZone(from.zone) ?: from
     if (dateTime.toLocalDate() == from.toLocalDate() && dateTime.toLocalTime() < from.toLocalTime()) {
         dateTime = from
     }

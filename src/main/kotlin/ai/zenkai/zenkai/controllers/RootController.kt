@@ -1,14 +1,18 @@
 package ai.zenkai.zenkai.controllers
 
-import ai.zenkai.zenkai.*
+import ai.zenkai.zenkai.CachedHttpServletRequest
+import ai.zenkai.zenkai.clean
 import ai.zenkai.zenkai.exceptions.badRequest
 import ai.zenkai.zenkai.exceptions.multicatch
+import ai.zenkai.zenkai.fixInt
 import ai.zenkai.zenkai.i18n.S
 import ai.zenkai.zenkai.model.*
 import ai.zenkai.zenkai.model.TaskStatus.*
+import ai.zenkai.zenkai.replace
 import ai.zenkai.zenkai.services.calendar.CalendarService
 import ai.zenkai.zenkai.services.calendar.DatePeriod
 import ai.zenkai.zenkai.services.calendar.shiftTime
+import ai.zenkai.zenkai.services.calendar.shiftToday
 import ai.zenkai.zenkai.services.clock.ClockService
 import ai.zenkai.zenkai.services.clock.isSingleHour
 import ai.zenkai.zenkai.services.weather.WeatherService
@@ -26,6 +30,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RestController
 import java.time.DayOfWeek
 import java.time.Duration
+import java.time.LocalTime
 import java.time.ZonedDateTime
 import java.time.temporal.ChronoUnit
 import javax.servlet.http.HttpServletRequest
@@ -207,20 +212,20 @@ class RootController(private val clockService: ClockService,
         }
     }
 
-    fun Bot.readTasks() = withTrello {
+    fun Bot.readTasks() = withTasks {
         val taskType = getString("task-type")
         logger.info("Task Type $taskType")
         val status = TaskStatus.parse(taskType)
-        with (getDefaultBoard().getReadableTasks(status, Task.statusComparator())) {
+        with (getReadableTasks(status, Task.statusComparator())) {
             addTaskMessage(status, size)
             if (status == TODO) {
                 val doingTasksSize = count { it.status == DOING }
                 checkMultitasking(doingTasksSize)
-                checkSomedayWarning(size - doingTasksSize, { getDefaultBoard().getReadableTasks(SOMEDAY).size })
+                checkSomedayWarning(size - doingTasksSize, { getReadableTasks(SOMEDAY).size })
             }
             if (isNotEmpty()) {
                 addMessage(get(if (size == 1) S.YOUR_TASK else S.YOUR_TASKS))
-                forEach(::addTask)
+                forEach { addTask(it) }
             }
         }
     }
@@ -246,67 +251,74 @@ class RootController(private val clockService: ClockService,
         return duration
     }
 
-    fun Bot.addTask() = withTrello {
+    fun Bot.addTask() = withTasks {
         val title = getString("task-title", TASK_ADD_CONTEXT)
-        if (title != null && !isCancelled(query)) {
-            askTaskDuration()?.let {
-                val duration = it
-                val taskType = getString("task-type", TASK_ADD_CONTEXT)
-                var deadline = getDateTime("date", "time", context = TASK_ADD_CONTEXT)
-                if (deadline != null && deadline < ZonedDateTime.now(timezone)) {
-                    deadline = getDateTime("date", "time", context = TASK_ADD_CONTEXT, implicit = false)
+        val cancelled = isCancelled(query)
+        if (cancelled) {
+            resetContext(TASK_ASK_DURATION_CONTEXT)
+        } else if (title != null) {
+            val status = TaskStatus.parse(getString("task-type", TASK_ADD_CONTEXT))
+            val tasks = getAllTasks(null)
+            val matchTask = tasks.find { it.hasSimilarTitle(title, locale) }
+            val alreadyAdded = matchTask?.status == status
+            var task: Task
+            val messageId: S
+            var duration: Duration? = null
+            var movedFrom: TaskStatus? = null
+            when {
+                alreadyAdded -> {
+                    task = matchTask!!
+                    messageId = S.ALREADY_ADDED
                 }
-                val status = TaskStatus.parse(taskType)
-                val description = query
-                var task = Task(title.capitalize(), description, status, duration, deadline?.toLocalDateTime())
-                val messageId: S
-                val tasks = getDefaultBoard().getAllTasks(null)
-                val matchTask = tasks.find { it.isSimilar(task, locale) }
-                val alreadyAdded = matchTask?.status == status
-                var movedFrom: TaskStatus? = null
-                if (matchTask != null) {
+                matchTask != null -> { // move task
                     task = matchTask
-                    messageId = if (alreadyAdded) {
-                        S.ALREADY_ADDED
-                    } else {
-                        movedFrom = task.status
-                        getDefaultBoard().moveTask(task, status)
-                        S.MOVED_TASK
-                    }
-                } else {
-                    task = getDefaultBoard().addTask(task)
-                    messageId = S.ADDED_TASK
+                    messageId = S.MOVED_TASK
+                    movedFrom = task.status
+                    moveTask(task, status)
                 }
-                addMessage(get(messageId).replace("\$type", status.getListName(language).capitalize()))
-                if (!alreadyAdded) {
-                    if (duration.toHours() > 8) {
-                        addMessage(S.TASK_DURATION_WARNING)
-                    }
-                    if (status == TODO) {
-                        checkSomedayWarning(1 + tasks.count { it.status == TODO }, { tasks.count { it.status == SOMEDAY } })
-                    } else if (status == DOING) {
-                        checkMultitasking(1 + tasks.count { it.status == DOING })
-                    } else if (status == DONE) {
-                        val doneTasksSize = 1 + tasks.count { it.status == DONE }
-                        if (doneTasksSize == 1 || doneTasksSize % 5 == 0) {
-                            addTaskMessage(DONE, doneTasksSize)
+                else -> { // new task
+                    duration = askTaskDuration()
+                    if (duration != null) {
+                        var deadline = getDateTime("date", "time", context = TASK_ADD_CONTEXT)
+                        if (deadline != null && deadline < ZonedDateTime.now(timezone)) {
+                            deadline = getDateTime("date", "time", context = TASK_ADD_CONTEXT, implicit = false)
                         }
+                        val description = query
+                        task = Task(title.capitalize(), description, status, duration, deadline?.toLocalDateTime())
+                        task = createTask(task)
+                        messageId = S.ADDED_TASK
+                    } else return@withTasks
+                }
+            }
+            addMessage(get(messageId).replace("\$type", status.getListName(language).capitalize()))
+            if (!alreadyAdded) {
+                if (duration != null && duration.toHours() > 8) {
+                    addMessage(S.TASK_DURATION_WARNING)
+                }
+                if (status == TODO) {
+                    checkSomedayWarning(1 + tasks.count { it.status == TODO }, { tasks.count { it.status == SOMEDAY } })
+                } else if (status == DOING) {
+                    checkMultitasking(1 + tasks.count { it.status == DOING })
+                } else if (status == DONE) {
+                    val doneTasksSize = 1 + tasks.count { it.status == DONE }
+                    if (doneTasksSize == 1 || doneTasksSize % 5 == 0) {
+                        addTaskMessage(DONE, doneTasksSize)
                     }
                 }
-                setArgument("moved-from", movedFrom?.toString())
-                addMessage(S.YOUR_TASK)
-                addTask(task)
             }
+            setArgument("moved-from", movedFrom?.toString())
+            addMessage(S.YOUR_TASK)
+            addTask(task)
         }
     }
 
-    private fun Bot.tryDeleteTaskOr(notFoundBlock: Bot.() -> Unit = {}) = withTrello {
+    private fun Bot.tryDeleteTaskOr(notFoundBlock: Bot.() -> Unit = {}) = withTasks {
         val title = getString("title")
         if (title != null) {
-            val tasks = getDefaultBoard().getAllTasks(comparator = compareBy<Task> { it.title.length })
-            val task = tasks.find { it.hasSimilarTitle(title.cleanFormat(locale), locale) }
+            val tasks = getAllTasks(comparator = compareBy<Task> { it.title.length })
+            val task = tasks.find { it.hasSimilarTitle(title, locale) }
             if (task != null) {
-                getDefaultBoard().archiveTask(task)
+                archiveTask(task)
                 addMessage(S.TASK_DELETED)
                 addMessage(S.YOUR_TASK)
                 addTask(task)
@@ -316,7 +328,7 @@ class RootController(private val clockService: ClockService,
         }
     }
 
-    private fun Bot.tryDeleteEventOr(notFoundBlock: Bot.() -> Unit = {}) = withCalendar {
+    private fun Bot.tryDeleteEventOr(notFoundBlock: Bot.() -> Unit = {}) = withEvents {
         val title = getString("title")
         if (title != null) {
             val event = findEvent(title.capitalize())
@@ -343,19 +355,23 @@ class RootController(private val clockService: ClockService,
         }
     }
 
-    fun Bot.readEvents() = withCalendar {
-        val date = getDate("date")
+    private fun getEventsDateMessageId(events: List<Event>): S {
+        return when {
+            events.isEmpty() -> S.NO_EVENTS_DATE
+            events.size == 1 -> S.SINGLE_EVENT_DATE
+            else -> S.YOUR_EVENTS_DATE
+        }
+    }
+
+    fun Bot.readEvents() = withEvents {
+        val date = getDate("date", context = TASK_READ_CONTEXT)
         val events = if (date != null) {
             readEvents(date)
         } else {
             readFollowingEvents(3, maxDate = ZonedDateTime.now(timezone).plusWeeks(1).toLocalDateTime())
         }
         val messageId = if (date.isNotNull()) {
-            when {
-                events.isEmpty() -> S.NO_EVENTS_DATE
-                events.size == 1 -> S.SINGLE_EVENT_DATE
-                else -> S.YOUR_EVENTS_DATE
-            }
+            getEventsDateMessageId(events)
         } else when {
             events.isEmpty() -> S.NO_EVENTS
             events.size == 1 -> S.SINGLE_EVENT
@@ -374,7 +390,7 @@ class RootController(private val clockService: ClockService,
                              startDateOriginal: String? = getString("start-date-original"),
                              endDateOriginal: String? = getString("end-date-original"),
                              startTimeOriginal: String? = getString("start-time-original"),
-                             endTimeOriginal: String? = getString("end-time-original")) = withCalendar {
+                             endTimeOriginal: String? = getString("end-time-original")) = withEvents {
         var start = from
         var end = to
         val now = ZonedDateTime.now(timezone)!!
@@ -430,7 +446,7 @@ class RootController(private val clockService: ClockService,
                 true, datePeriodOriginal, datePeriodOriginal)
     }
 
-    fun Bot.addQuickEvent() = withCalendar {
+    fun Bot.addQuickEvent() = withEvents {
         try {
             val event = createEvent(query)
             addMessages(S.ADDED_EVENT, S.YOUR_EVENT)
@@ -446,15 +462,15 @@ class RootController(private val clockService: ClockService,
         val moved = getString("moved-from")
         val title = getString("title")
         if (moved != null && title != null) {
-            withTrello {
+            withTasks {
                 val status = TaskStatus.valueOf(moved)
-                val tasks = getDefaultBoard().getAllTasks(null)
-                val task = tasks.find { it.hasSimilarTitle(title.cleanFormat(locale), locale) }
+                val tasks = getAllTasks(null)
+                val task = tasks.find { it.hasSimilarTitle(title, locale) }
                 if (task != null) {
                     val messageId = if (task.status == status) {
                         S.ALREADY_ADDED
                     } else {
-                        getDefaultBoard().moveTask(task, status)
+                        moveTask(task, status)
                         setArgument("moved-from", task.status.toString())
                         S.MOVED_TASK
                     }
@@ -464,6 +480,50 @@ class RootController(private val clockService: ClockService,
                 }
             }
         } else tryDeleteTaskOr()
+    }
+
+    fun Bot.schedule() = withTasksEvents { taskService, eventService ->
+        val date = getDate("date")!!
+        val now = ZonedDateTime.now(timezone)
+
+        if (date.isBefore(now.toLocalDate())) {
+            addMessage(S.PAST_SCHEDULE_DATE)
+            return@withTasksEvents
+        }
+
+        val period = getTimePeriod("start", "end", "time-period",false)
+        val startTime = period?.start ?: LocalTime.of(8, 0)
+        val endTime = period?.end ?: LocalTime.of(21, 0)
+
+        val start = date.atTime(startTime).shiftToday(now).toLocalDateTime()
+        val end = date.atTime(endTime).shiftToday(now).toLocalDateTime()
+
+        logger.info("Scheduling tasks from $start to $end")
+
+        val scheduler = Scheduler(taskService, eventService, language)
+        val (scheduledEvents, dateEvents) = scheduler.schedule(start, end, timezone)
+
+        val events = mutableListOf<Event>().also {
+            it.addAll(scheduledEvents)
+            it.addAll(dateEvents)
+        }.sortedBy { it.start }
+
+        val messageId = when {
+            scheduler.tasks.isEmpty() -> S.NO_TASKS_SCHEDULE
+            scheduledEvents.isEmpty() -> S.NO_SCHEDULED
+            scheduledEvents.size == 1 -> S.SCHEDULED_SINGLE
+            else -> S.SCHEDULED
+        }
+        addMessage(get(messageId).replace("\$size", scheduledEvents.size.toString()))
+        if (scheduledEvents.isNotEmpty()) {
+            addMessage(get(getEventsDateMessageId(events)).replace("\$size", events.size.toString()).replace("\$date", calendarService.prettyDate(date, language)))
+            events.forEach { addEvent(it) }
+        }
+    }
+
+    fun Bot.clearSchedule() = withEvents {
+        removeEvents(get(S.AUTO_SCHEDULED_ID))
+        addMessage(S.REMOVED_SCHEDULING)
     }
 
     val actionMap: Map<String, Handler> = mapOf(
@@ -482,6 +542,8 @@ class RootController(private val clockService: ClockService,
             "tasks.add" to { b -> b.addTask() },
             "tasks.add.rollback" to { b -> b.rollbackTaskAdd() },
             "tasks.delete" to { b -> b.deleteTask() },
+            "tasks.schedule" to { b -> b.schedule() },
+            "tasks.schedule.clear" to { b -> b.clearSchedule() },
             "events.read" to { b -> b.readEvents() },
             "events.add" to { b -> b.addEvent() },
             "events.add.now" to { b -> b.addEvent(implicitToday = true) },
