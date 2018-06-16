@@ -9,7 +9,7 @@ data class TimePeriod(val start: LocalTime, val end: LocalTime) {
 
     companion object Factory {
 
-        private val timePeriodFormatter by lazy { DateTimeFormatter.ofPattern("HH:mm") }
+        private val timePeriodFormatter by lazy { DateTimeFormatter.ofPattern("HH:mm:ss") }
 
         fun default() = TimePeriod(LocalTime.MIN, LocalTime.MAX)
 

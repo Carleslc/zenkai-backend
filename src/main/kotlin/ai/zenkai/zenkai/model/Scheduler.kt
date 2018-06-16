@@ -13,7 +13,7 @@ class Scheduler(taskService: TaskService, private val eventService: EventService
 
     private val AUTO_SCHEDULED_ID = i18n[S.AUTO_SCHEDULED_ID, language]
 
-    private val todoTasks = taskService.getTodoTasks().filter { !it.duration.isZero }
+    private val todoTasks = taskService.getTodoTasks(TASK_COMPARATOR).filter { !it.duration.isZero }
 
     private lateinit var remainingTasks: LinkedList<Task>
 
@@ -21,10 +21,12 @@ class Scheduler(taskService: TaskService, private val eventService: EventService
         private set
 
     fun schedule(start: LocalDateTime, end: LocalDateTime, timezone: ZoneId): Pair<List<Event>, List<Event>> {
-        val events = eventService.getEvents(start, end)
-        val alreadyScheduledEventsInRange = events.filter { AUTO_SCHEDULED_ID in it.description }.map { it.id!! }.toHashSet()
+        logger.info("Retrieving tasks to schedule...")
+        val events = eventService.getEvents(start.toLocalDate().atStartOfDay(), end.toLocalDate().plusDays(1).atStartOfDay())
+        val eventsInRange = events.filter { it.end.toLocalDateTime() > start && it.start.toLocalDateTime() < end }
+        val alreadyScheduledEventsInRange = eventsInRange.filter { AUTO_SCHEDULED_ID in it.description }.map { it.id!! }.toHashSet()
         val alreadyScheduledEventsOutOfRange = eventService.findEvents(AUTO_SCHEDULED_ID).filter { it.id !in alreadyScheduledEventsInRange }.map { it.title }.toHashSet()
-        val externalEvents = events.filter { it.id !in alreadyScheduledEventsInRange }
+        val externalEvents = eventsInRange.filter { it.id !in alreadyScheduledEventsInRange }
         val scheduledTasks = mutableListOf<Event>()
 
         // Ignore already scheduled tasks in other days
@@ -98,7 +100,7 @@ class Scheduler(taskService: TaskService, private val eventService: EventService
         return null
     }
 
-    private fun Task.fits(minutes: Long) = duration.toMinutes() < minutes
+    private fun Task.fits(minutes: Long) = duration.toMinutes() <= minutes
 
     companion object {
         val TASK_COMPARATOR = Task.deadlinePriorityComparator()

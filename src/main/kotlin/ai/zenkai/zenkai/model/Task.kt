@@ -60,7 +60,7 @@ data class Task(val title: String,
             if (t1.deadline != null) {
                 if (t2.deadline != null) t2.deadline.compareTo(t1.deadline) else 1
             } else {
-                if (t2.deadline != null) -1 else t2.status.compareTo(t1.status)
+                if (t2.deadline != null) -1 else t1.status.compareTo(t2.status)
             }
         }.reversed()!!
 

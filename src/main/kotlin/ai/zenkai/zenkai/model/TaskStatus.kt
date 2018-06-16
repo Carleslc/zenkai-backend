@@ -29,7 +29,7 @@ enum class TaskStatus(val idNameList: S) {
 
         fun getListNames(language: String): Map<String, TaskStatus> = TaskStatus.values().map { it.getListName(language) to it }.toMap()
 
-        fun getTodoListNames(language: String): Map<String, TaskStatus> = listOf(SOMEDAY, TODO).map { it.getListName(language) to it }.toMap()
+        fun getTodoListNames(language: String): Map<String, TaskStatus> = listOf(TODO, SOMEDAY).map { it.getListName(language) to it }.toMap()
 
         fun parse(taskType: String?) = if (taskType != null) valueOf(taskType.toString()) else default()
     }
