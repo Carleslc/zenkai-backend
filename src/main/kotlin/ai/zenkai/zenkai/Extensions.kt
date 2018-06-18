@@ -6,8 +6,11 @@ import java.text.BreakIterator
 import java.text.Normalizer
 import java.util.*
 import kotlin.coroutines.experimental.buildSequence
+import kotlin.math.roundToLong
 
 fun fixInt(n: Double, decimals: Int = 5): String = if (n.toInt().toDouble() == n) n.toInt().toString() else n.round(decimals)
+
+fun Double.roundToTenth(): Long = (this/10).roundToLong() * 10
 
 fun String?.nullIfBlank() = if (isNotNullOrBlank()) this else null
 
@@ -26,7 +29,10 @@ fun String.words(locale: Locale): Sequence<String> {
         var start = iterator.first()
         var end = iterator.next()
         while (end != BreakIterator.DONE) {
-            yield(text.substring(start, end))
+            val word = text.substring(start, end)
+            if (word.isNotBlank()) {
+                yield(word)
+            }
             start = end
             end = iterator.next()
         }

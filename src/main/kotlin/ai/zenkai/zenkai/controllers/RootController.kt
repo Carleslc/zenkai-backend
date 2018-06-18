@@ -1,14 +1,12 @@
 package ai.zenkai.zenkai.controllers
 
-import ai.zenkai.zenkai.CachedHttpServletRequest
-import ai.zenkai.zenkai.clean
+import ai.zenkai.zenkai.*
 import ai.zenkai.zenkai.exceptions.badRequest
 import ai.zenkai.zenkai.exceptions.multicatch
-import ai.zenkai.zenkai.fixInt
 import ai.zenkai.zenkai.i18n.S
+import ai.zenkai.zenkai.i18n.trimStopWordsLeft
 import ai.zenkai.zenkai.model.*
 import ai.zenkai.zenkai.model.TaskStatus.*
-import ai.zenkai.zenkai.replace
 import ai.zenkai.zenkai.services.calendar.CalendarService
 import ai.zenkai.zenkai.services.calendar.DatePeriod
 import ai.zenkai.zenkai.services.calendar.shiftTime
@@ -259,7 +257,15 @@ class RootController(private val clockService: ClockService,
         } else if (title != null) {
             val status = TaskStatus.parse(getString("task-type", TASK_ADD_CONTEXT))
             val tasks = getAllTasks(null)
-            val matchTask = tasks.find { it.hasSimilarTitle(title, locale) }
+            val words = title.words(locale).toList()
+            var wordsWithoutFirst = words
+            val titleSplit = if (words.size > 1) {
+                wordsWithoutFirst = words.subList(1, words.size)
+                wordsWithoutFirst.joinToString(" ")
+            } else title
+            val trimmedTitle = wordsWithoutFirst.trimStopWordsLeft(locale)
+            val titleMatch = if (trimmedTitle.isNotBlank()) trimmedTitle else titleSplit
+            val matchTask = tasks.find { it.hasSimilarTitle(titleMatch, locale) }
             val alreadyAdded = matchTask?.status == status
             var task: Task
             val messageId: S
@@ -279,12 +285,14 @@ class RootController(private val clockService: ClockService,
                 else -> { // new task
                     duration = askTaskDuration()
                     if (duration != null) {
+                        val deviation = 1.3 // 30% desviació estimada
+                        duration = Duration.of((duration.toMinutes()*deviation).roundToTenth(), ChronoUnit.MINUTES)
                         var deadline = getDateTime("date", "time", context = TASK_ADD_CONTEXT)
                         if (deadline != null && deadline < ZonedDateTime.now(timezone)) {
                             deadline = getDateTime("date", "time", context = TASK_ADD_CONTEXT, implicit = false)
                         }
                         val description = query
-                        task = Task(title.capitalize(), description, status, duration, deadline?.toLocalDateTime())
+                        task = Task(words.trimStopWordsLeft(locale).capitalize(), description, status, duration, deadline?.toLocalDateTime())
                         task = createTask(task)
                         messageId = S.ADDED_TASK
                     } else return@withTasks

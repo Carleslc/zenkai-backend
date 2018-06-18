@@ -135,7 +135,12 @@
 			<artifactId>google-api-client-jackson2</artifactId>
 			<version>${google-api-client.version}</version>
 		</dependency>
-    </dependencies>
+		<dependency>
+			<groupId>com.github.Carleslc</groupId>
+			<artifactId>cue.language</artifactId>
+			<version>2.3</version>
+		</dependency>
+	</dependencies>
 
 	<build>
 		<sourceDirectory>${project.basedir}/src/main/kotlin</sourceDirectory>
@@ -160,7 +165,8 @@
 					<compilerPlugins>
 						<plugin>spring</plugin>
 					</compilerPlugins>
-				</configuration>
+                    <experimentalCoroutines>enable</experimentalCoroutines>
+                </configuration>
 				<dependencies>
 					<dependency>
 						<groupId>org.jetbrains.kotlin</groupId>

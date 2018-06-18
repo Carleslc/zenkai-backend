@@ -1,5 +1,9 @@
 package ai.zenkai.zenkai.i18n
 
+import ai.zenkai.zenkai.cleanFormat
+import ai.zenkai.zenkai.model.logger
+import ai.zenkai.zenkai.words
+import cue.lang.StopWords
 import java.util.*
 
 const val DEFAULT_LANGUAGE = "en"
@@ -23,6 +27,8 @@ object i18n : Set<String> by linkedSetOf(DEFAULT_LANGUAGE, "es") {
         }.toMap()
     }
 
+    private val stopWords by lazy { mutableMapOf<String, StopWords>() }
+
     operator fun get(locale: String) = supportedLocales[locale]
 
     operator fun get(id: S, language: String): String {
@@ -35,6 +41,13 @@ object i18n : Set<String> by linkedSetOf(DEFAULT_LANGUAGE, "es") {
     fun ensureLanguage(language: String): String {
         val lang = language.toLowerCase()
         return if (lang in this) lang else DEFAULT_LANGUAGE
+    }
+
+    fun getStopWords(language: String): StopWords {
+        if (language !in stopWords) {
+            stopWords[language] = StopWords.values().first { it.language == language }.also(StopWords::loadLanguage)
+        }
+        return stopWords[language]!!
     }
 
 }
@@ -144,6 +157,24 @@ enum class S {
     AUTO_SCHEDULED_ID,
     REMOVED_SCHEDULING,
     PAST_SCHEDULE_DATE;
+}
+
+fun String.removeStopWords(locale: Locale): String {
+    val stopWords = i18n.getStopWords(locale.language)
+    return words(locale).filter { !stopWords.isStopWordExact(it.cleanFormat(locale)) }.joinToString(" ").trim()
+}
+
+fun String.trimStopWordsLeft(locale: Locale) = words(locale).toList().trimStopWordsLeft(locale)
+
+fun List<String>.trimStopWordsLeft(locale: Locale): String {
+    val stopWords = i18n.getStopWords(locale.language)
+    val firstStopWords = takeWhile {
+        val w = it.cleanFormat(locale)
+        val stop = stopWords.isStopWordExact(w)
+        logger.info("'$w' stop? $stop")
+        stop
+    }
+    return subList(firstStopWords.size, size).joinToString(" ").trim()
 }
 
 fun StringBuilder.append(id: S, locale: String) = append(i18n[id, locale])
