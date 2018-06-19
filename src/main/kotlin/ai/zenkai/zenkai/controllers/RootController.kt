@@ -285,8 +285,12 @@ class RootController(private val clockService: ClockService,
                 else -> { // new task
                     duration = askTaskDuration()
                     if (duration != null) {
-                        val deviation = 1.3 // 30% desviació estimada
-                        duration = Duration.of((duration.toMinutes()*deviation).roundToTenth(), ChronoUnit.MINUTES)
+                        val minutes = duration.toMinutes()
+                        if (minutes <= 2) {
+                            addMessage(S.TWO_MINUTES_WARNING)
+                        }
+                        val deviation = 1.3 // 30% estimation deviation
+                        duration = Duration.of(maxOf(minutes, (minutes * deviation).roundToTenth()), ChronoUnit.MINUTES)
                         var deadline = getDateTime("date", "time", context = TASK_ADD_CONTEXT)
                         if (deadline != null && deadline < ZonedDateTime.now(timezone)) {
                             deadline = getDateTime("date", "time", context = TASK_ADD_CONTEXT, implicit = false)

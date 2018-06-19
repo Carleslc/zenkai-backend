@@ -156,7 +156,8 @@ enum class S {
     SCHEDULED_SINGLE,
     AUTO_SCHEDULED_ID,
     REMOVED_SCHEDULING,
-    PAST_SCHEDULE_DATE;
+    PAST_SCHEDULE_DATE,
+    TWO_MINUTES_WARNING;
 }
 
 fun String.removeStopWords(locale: Locale): String {
