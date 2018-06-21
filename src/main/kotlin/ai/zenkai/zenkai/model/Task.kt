@@ -31,14 +31,14 @@ data class Task(val title: String,
     fun getDisplayText(language: String, zoneId: ZoneId, calendarService: CalendarService) = buildString {
         appendln(title)
         HumanReadableDuration.of(duration, language).toString().letIf(String::isNotBlank) {
-            append(i18n[S.DURATION, language]).append(": ").appendln(it)
+            append(i18n[S.ESTIMATED_DURATION, language]).append(": ").appendln(it)
         }
         deadline?.let {
             append(i18n[S.DEADLINE, language]).append(' ')
                     .appendln(calendarService.prettyApproxDateTime(deadline, zoneId, language))
         }
         if (description.isNotBlank()) {
-            appendln().appendln(description).appendln()
+            appendln().appendln(description.trim()).appendln()
         }
         if (tags.isNotEmpty()) {
             appendln(tags.joinToString(prefix = "Tags: ")).appendln()

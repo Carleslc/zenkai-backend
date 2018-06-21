@@ -143,6 +143,7 @@ enum class S {
     SECOND,
     SECONDS,
     DURATION,
+    ESTIMATED_DURATION,
     NOW,
     UNTIL,
     UNTIL_SINGLE,
@@ -157,7 +158,9 @@ enum class S {
     AUTO_SCHEDULED_ID,
     REMOVED_SCHEDULING,
     PAST_SCHEDULE_DATE,
-    TWO_MINUTES_WARNING;
+    TWO_MINUTES_WARNING,
+    DEADLINE_MISSED_WARNING,
+    OVERLAPPING_EVENTS;
 }
 
 fun String.removeStopWords(locale: Locale): String {
@@ -169,12 +172,7 @@ fun String.trimStopWordsLeft(locale: Locale) = words(locale).toList().trimStopWo
 
 fun List<String>.trimStopWordsLeft(locale: Locale): String {
     val stopWords = i18n.getStopWords(locale.language)
-    val firstStopWords = takeWhile {
-        val w = it.cleanFormat(locale)
-        val stop = stopWords.isStopWordExact(w)
-        logger.info("'$w' stop? $stop")
-        stop
-    }
+    val firstStopWords = takeWhile { stopWords.isStopWordExact(it.cleanFormat(locale)) }
     return subList(firstStopWords.size, size).joinToString(" ").trim()
 }
 

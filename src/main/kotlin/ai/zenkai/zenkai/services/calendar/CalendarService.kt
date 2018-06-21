@@ -6,6 +6,7 @@ import ai.zenkai.zenkai.i18n.i18n
 import ai.zenkai.zenkai.i18n.toLocale
 import ai.zenkai.zenkai.services.clock.ClockService
 import ai.zenkai.zenkai.words
+import me.carleslc.kotlin.extensions.standard.letOrElse
 import org.ocpsoft.prettytime.PrettyTime
 import org.springframework.stereotype.Service
 import java.time.*
@@ -89,7 +90,7 @@ class CalendarService(val clockService: ClockService) {
     }
 
     fun implicitDate(from: ZonedDateTime, date: LocalDate, dateOriginal: String?, language: String): LocalDate {
-        if (dateOriginal != null && from.hour < IMPLICIT_START_OF_DAY_HOUR && isTomorrow(dateOriginal, language)) { // Early morning "tomorrow" request
+        if (dateOriginal != null && from.hour < IMPLICIT_START_OF_DAY_HOUR && date > from.toLocalDate() && isTomorrow(dateOriginal, language)) { // Early morning "tomorrow" request
             return date.minusDays(1)
         }
         return date
@@ -108,9 +109,13 @@ class CalendarService(val clockService: ClockService) {
         return fixedDate.atTime(fixedTime).atZone(from.zone)
     }
 
-    private fun isTomorrow(query: String, language: String) = i18n[S.TOMORROW, language] in query.toLowerCase(language.toLocale())
+    fun isTomorrow(query: String, language: String) = i18n[S.TOMORROW, language] in query.toLowerCase(language.toLocale())
 
-    private fun isMorning(query: String, language: String) = i18n[S.MORNING, language] in query.toLowerCase(language.toLocale())
+    fun isTomorrowNullable(query: String?, language: String) = query.letOrElse(false) { isTomorrow(it, language) }
+
+    fun isMorning(query: String, language: String) = i18n[S.MORNING, language] in query.toLowerCase(language.toLocale())
+
+    fun isMorningNullable(query: String?, language: String) = query.letOrElse(false) { isMorning(it, language) }
 
     fun isPast(query: String, language: String): Boolean {
         val lower = query.toLowerCase(language.toLocale())
@@ -158,12 +163,23 @@ fun LocalDateTime?.shiftToday(from: ZonedDateTime): ZonedDateTime {
     return dateTime
 }
 
-fun ZonedDateTime.shiftTime(from: ZonedDateTime): ZonedDateTime {
+fun ZonedDateTime.shiftTime(from: ZonedDateTime, morning: Boolean = false): ZonedDateTime {
     var result = this
-    if (result < from) {
+    if (result <= from) {
         result = result.plusHours(12) // to the afternoon
-        if (result < from) {
+        if (result < from || (morning && result.hour > 12)) {
             result = result.plusHours(12) // to the next day
+        }
+    }
+    return result
+}
+
+fun ZonedDateTime.shiftTimeBack(from: ZonedDateTime): ZonedDateTime {
+    var result = this
+    if (result >= from) {
+        result = result.minusHours(12)
+        if (result > from) {
+            result = result.minusHours(12)
         }
     }
     return result

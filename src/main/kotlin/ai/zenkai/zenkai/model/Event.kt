@@ -7,9 +7,7 @@ import ai.zenkai.zenkai.services.calendar.HumanReadableDuration
 import ai.zenkai.zenkai.services.clock.isSingleHour
 import me.carleslc.kotlin.extensions.standard.letIf
 import me.carleslc.kotlin.extensions.strings.isNotNullOrBlank
-import org.slf4j.LoggerFactory
 import java.time.ZonedDateTime
-import java.time.temporal.ChronoUnit
 
 data class Event(val title: String,
                  val start: ZonedDateTime,
@@ -18,8 +16,6 @@ data class Event(val title: String,
                  val location: String? = null,
                  val url: String? = null,
                  val id: String? = null) {
-
-    private val logger = LoggerFactory.getLogger(this::class.java)
 
     fun getDisplayText(language: String, calendarService: CalendarService) = buildString {
         appendln(title)
@@ -47,7 +43,7 @@ data class Event(val title: String,
         }
         appendln()
         if (description.isNotBlank()) {
-            appendln(description).appendln()
+            appendln(description.trim()).appendln()
         }
         url?.let { appendln(url) }
     }

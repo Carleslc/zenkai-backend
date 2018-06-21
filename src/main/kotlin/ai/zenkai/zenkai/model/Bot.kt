@@ -386,7 +386,7 @@ data class Bot(val language: String,
                 } else action.serviceUnavailable(e)
             } catch (e: Exception) {
                 var message = e.message
-                if (message != null && "timeout" in message) {
+                if (message != null && "timeout" in message.toLowerCase()) {
                     message = i18n[S.TIMEOUT, bot?.language ?: DEFAULT_LANGUAGE]
                 }
                 action.serviceUnavailable(e, message)

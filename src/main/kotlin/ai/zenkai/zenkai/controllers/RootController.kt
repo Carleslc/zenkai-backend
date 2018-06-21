@@ -7,10 +7,7 @@ import ai.zenkai.zenkai.i18n.S
 import ai.zenkai.zenkai.i18n.trimStopWordsLeft
 import ai.zenkai.zenkai.model.*
 import ai.zenkai.zenkai.model.TaskStatus.*
-import ai.zenkai.zenkai.services.calendar.CalendarService
-import ai.zenkai.zenkai.services.calendar.DatePeriod
-import ai.zenkai.zenkai.services.calendar.shiftTime
-import ai.zenkai.zenkai.services.calendar.shiftToday
+import ai.zenkai.zenkai.services.calendar.*
 import ai.zenkai.zenkai.services.clock.ClockService
 import ai.zenkai.zenkai.services.clock.isSingleHour
 import ai.zenkai.zenkai.services.weather.WeatherService
@@ -288,6 +285,8 @@ class RootController(private val clockService: ClockService,
                         val minutes = duration.toMinutes()
                         if (minutes <= 2) {
                             addMessage(S.TWO_MINUTES_WARNING)
+                        } else if (duration.toHours() > 8) {
+                            addMessage(S.TASK_DURATION_WARNING)
                         }
                         val deviation = 1.3 // 30% estimation deviation
                         duration = Duration.of(maxOf(minutes, (minutes * deviation).roundToTenth()), ChronoUnit.MINUTES)
@@ -295,8 +294,7 @@ class RootController(private val clockService: ClockService,
                         if (deadline != null && deadline < ZonedDateTime.now(timezone)) {
                             deadline = getDateTime("date", "time", context = TASK_ADD_CONTEXT, implicit = false)
                         }
-                        val description = query
-                        task = Task(words.trimStopWordsLeft(locale).capitalize(), description, status, duration, deadline?.toLocalDateTime())
+                        task = Task(words.trimStopWordsLeft(locale).capitalize(), "", status, duration, deadline?.toLocalDateTime())
                         task = createTask(task)
                         messageId = S.ADDED_TASK
                     } else return@withTasks
@@ -304,9 +302,6 @@ class RootController(private val clockService: ClockService,
             }
             addMessage(get(messageId).replace("\$type", status.getListName(language).capitalize()))
             if (!alreadyAdded) {
-                if (duration != null && duration.toHours() > 8) {
-                    addMessage(S.TASK_DURATION_WARNING)
-                }
                 if (status == TODO) {
                     checkSomedayWarning(1 + tasks.count { it.status == TODO }, { tasks.count { it.status == SOMEDAY } })
                 } else if (status == DOING) {
@@ -407,12 +402,13 @@ class RootController(private val clockService: ClockService,
         var end = to
         val now = ZonedDateTime.now(timezone)!!
         logger.info("Now: $now")
-        val title = getString("event-title")
+        var title = getString("event-title")
         val location = getString("location")
         logger.info("Title: $title")
         logger.info("Start: $start (Original $startDateOriginal / $startTimeOriginal)")
         logger.info("End:   $end (Original $endDateOriginal / $endTimeOriginal)")
         if (title != null && start != null && end != null && !isCancelled(query)) {
+            title = title.capitalize()
             start = calendarService.implicitDateTime(now, start, startDateOriginal, startTimeOriginal, language)
             end = calendarService.implicitDateTime(now, end, endDateOriginal ?: startDateOriginal, endTimeOriginal, language)
             if (start < now.minusMinutes(1)) {
@@ -433,12 +429,24 @@ class RootController(private val clockService: ClockService,
             }
             if (end <= start) {
                 logger.info("End Time <= Start Time")
-                end = end.shiftTime(start)
+                val endMorning = calendarService.isMorningNullable(endTimeOriginal, language)
+                if (endMorning || calendarService.isMorningNullable(startTimeOriginal, language)) {
+                    start = start.shiftTimeBack(end).shiftTime(now)
+                }
+                logger.info("End $end shift Start $start, morning $endMorning")
+                end = end.shiftTime(start, endMorning)
             }
             logger.info("Start Finish: $start")
             logger.info("End Finish:   $end")
-            val event = createEvent(Event(title.capitalize(), start, end, query, location))
-            addMessages(S.ADDED_EVENT, S.YOUR_EVENT)
+            val overlapping = getEvents(start.toLocalDateTime(), end.toLocalDateTime())
+            if (overlapping.isEmpty()) {
+                addMessage(S.ADDED_EVENT)
+            } else {
+                addMessage(get(S.OVERLAPPING_EVENTS).replace("\$title", title))
+                overlapping.forEach { addEvent(it) }
+            }
+            val event = createEvent(Event(title, start, end, "", location))
+            addMessage(S.YOUR_EVENT)
             addEvent(event)
         }
     }
@@ -447,7 +455,7 @@ class RootController(private val clockService: ClockService,
         val start = getDateTime("start-date", "start-time",
                 defaultDate = if (implicitToday) calendarService.today(timezone) else null,
                 defaultTime = if (implicitToday) clockService.now(timezone) else null)
-        val end = getDateTime("end-date", "end-time", defaultDate = start?.toLocalDate())
+        val end = getDateTime("end-date", "end-time", implicit = false, defaultDate = start?.toLocalDate())
         putEvent(start, end, getTime("end-time") != null)
     }
 
@@ -525,6 +533,16 @@ class RootController(private val clockService: ClockService,
             scheduledEvents.isEmpty() -> S.NO_SCHEDULED
             scheduledEvents.size == 1 -> S.SCHEDULED_SINGLE
             else -> S.SCHEDULED
+        }
+
+        fun deadlineMissed(task: Task): Boolean {
+            return task.deadline?.isBefore(end) == true && scheduledEvents.all { it.title != task.title || task.deadline.isAfter(it.end.toLocalDateTime()) == true }
+        }
+
+        val missedTasks = scheduler.tasks.filter(::deadlineMissed)
+        if (missedTasks.isNotEmpty()) {
+            addMessage(S.DEADLINE_MISSED_WARNING)
+            missedTasks.forEach { addTask(it) }
         }
         addMessage(get(messageId).replace("\$size", scheduledEvents.size.toString()))
         if (scheduledEvents.isNotEmpty()) {
