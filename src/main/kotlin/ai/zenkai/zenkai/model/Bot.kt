@@ -47,7 +47,6 @@ const val TASK_READ_CONTEXT = "tasksread-followup"
 
 data class Bot(val language: String,
                val timezone: ZoneId,
-               private val baseUrl: String,
                private val action: DialogflowApp,
                private val tokens: MutableMap<TokenType, String>,
                private val calendarService: CalendarService,
@@ -58,13 +57,13 @@ data class Bot(val language: String,
 
     private val messages by lazy { mutableListOf<SimpleResponse>() }
 
+    private var lastRequiredToken: TokenType? = null
+
+    private var sent = false
+
     val query get() = action.query
 
     val locale by lazy { language.toLocale() }
-
-    var lastRequiredToken: TokenType? = null
-
-    var sent = false
 
     fun addMessage(textToSpeech: String? = null, displayText: String? = null): Boolean {
         if (textToSpeech.isNotNullOrBlank() || displayText.isNotNullOrBlank()) {
@@ -176,7 +175,7 @@ data class Bot(val language: String,
         }
     }
 
-    fun needsLogin(type: TokenType = lastRequiredToken!!, withMessages: Boolean = true) {
+    private fun needsLogin(type: TokenType = lastRequiredToken!!, withMessages: Boolean = true) {
         onNeedLogin()
         logger.info("Needs login $type")
         val id = when (type) {
@@ -194,7 +193,7 @@ data class Bot(val language: String,
         action.fillUserTokens(tokens)
     }
 
-    fun needsLogin(id: S, authUrl: String) {
+    private fun needsLogin(id: S, authUrl: String) {
         onNeedLogin()
         addMessage(id)
         addText(authUrl)
@@ -374,7 +373,7 @@ data class Bot(val language: String,
                     fillContextTokens(action.request.body.result.resolvedQuery, action, tokens)
                     fillDataTokens(data?.tokens, tokens, language)
                     action.fillUserTokens(tokens)
-                    bot = Bot(language, timezone, req.requestURL.toString(), action, tokens, calendarService, clockService, gson)
+                    bot = Bot(language, timezone, action, tokens, calendarService, clockService, gson)
                     handler(bot)
                     bot.send()
                 }

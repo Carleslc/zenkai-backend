@@ -15,7 +15,7 @@ data class Event(val title: String,
                  val description: String = "",
                  val location: String? = null,
                  val url: String? = null,
-                 val id: String? = null) {
+                 val id: String = "") {
 
     fun getDisplayText(language: String, calendarService: CalendarService) = buildString {
         appendln(title)

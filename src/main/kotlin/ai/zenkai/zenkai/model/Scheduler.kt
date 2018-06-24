@@ -23,7 +23,7 @@ class Scheduler(taskService: TaskService, private val eventService: EventService
     fun schedule(start: LocalDateTime, end: LocalDateTime, timezone: ZoneId): Pair<List<Event>, List<Event>> {
         logger.info("Retrieving tasks to schedule...")
         var events = eventService.getEvents(start.toLocalDate().atStartOfDay(), end.toLocalDate().plusDays(1).atStartOfDay())
-        val alreadyScheduledEventsInDate = events.filter { AUTO_SCHEDULED_ID in it.description }.map { it.id!! }.toHashSet()
+        val alreadyScheduledEventsInDate = events.filter { AUTO_SCHEDULED_ID in it.description }.map { it.id }.toHashSet()
         val alreadyScheduledEventsOutOfRange = eventService.findEvents(AUTO_SCHEDULED_ID).filter { it.id !in alreadyScheduledEventsInDate }.map { it.title }.toHashSet()
         val externalEvents = events.filter { it.id !in alreadyScheduledEventsInDate }
         val scheduledTasks = mutableListOf<Event>()

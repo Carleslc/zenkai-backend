@@ -2,6 +2,7 @@ package ai.zenkai.zenkai
 
 import me.carleslc.kotlin.extensions.number.round
 import me.carleslc.kotlin.extensions.strings.isNotNullOrBlank
+import org.slf4j.LoggerFactory
 import java.text.BreakIterator
 import java.text.Normalizer
 import java.util.*
@@ -62,3 +63,13 @@ fun <K, V> Map<K, V>.add(entries: Map<K, V>) = asMutableMap().apply { putAll(ent
 fun <K, V> Map<K, V>.add(vararg entries: Pair<K, V>) = asMutableMap().apply { putAll(entries) }
 
 fun <T> Array<out T>.add(vararg elements: T) = toMutableList().apply { addAll(elements) }
+
+fun <K, V> mergeMaps(maps: List<Map<K, V>>) : Map<K, V> {
+    val result = LinkedHashMap<K,V>()
+    maps.forEach(result::putAll)
+    return result
+}
+
+fun <K, V> mergeMaps(vararg maps: Map<K, V>) : Map<K, V> = mergeMaps(maps.toList())
+
+fun Any.LazyLogger() = lazy { LoggerFactory.getLogger(this::class.java) }

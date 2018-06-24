@@ -14,9 +14,9 @@ interface TaskService : Service {
 
     fun createTask(task: Task): Task
 
-    fun moveTask(trelloTask: Task, to: TaskStatus)
+    fun moveTask(task: Task, to: TaskStatus)
 
-    fun archiveTask(trelloTask: Task)
+    fun archiveTask(task: Task)
 
     fun getDefaultBoard(): Board
 

@@ -9,30 +9,30 @@ import kotlin.reflect.KClass
 
 private val REST by lazy { RestTemplate() }
 
-open class RestTemplateHttpClient {
+object RestTemplateHttpClient : RestClient {
 
-    protected fun <T: Any> get(url: String, klass: KClass<T>, params: Parameters): T {
+    override fun <T: Any> get(url: String, klass: KClass<T>, params: Parameters): T {
         return REST.getForObject(url, klass.java, params)!!
     }
 
-    protected fun <T: Any> getList(url: String, klass: KClass<T>, params: Parameters): List<T> {
+    override fun <T: Any> getList(url: String, klass: KClass<T>, params: Parameters): List<T> {
         return REST.exchange(url, HttpMethod.GET, null, getArrayType(klass), params).body?.toList() ?: listOf()
     }
 
-    protected fun <T: Any> post(url: String, klass: KClass<T>, params: Parameters): T {
+    override fun <T: Any> post(url: String, klass: KClass<T>, params: Parameters): T {
         return REST.postForObject(url, null, klass.java, params)!!
     }
 
-    protected fun post(url: String, params: Parameters): HttpResponse {
+    override fun post(url: String, params: Parameters): HttpResponse {
         val response = REST.postForEntity(url, null, Any::class.java, params)
         return HttpResponse(response.body, response.statusCodeValue)
     }
 
-    protected fun put(url: String, params: Parameters) {
+    override fun put(url: String, params: Parameters) {
         REST.put(url, null, params)
     }
 
-    protected fun delete(url: String, params: Parameters) {
+    override fun delete(url: String, params: Parameters) {
         REST.delete(url, params)
     }
 

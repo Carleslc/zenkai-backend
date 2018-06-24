@@ -66,13 +66,13 @@ class TrelloTaskService(private val accessToken: String,
         return card.toTask(task.status)
     }
 
-    override fun moveTask(trelloTask: Task, to: TaskStatus) {
+    override fun moveTask(task: Task, to: TaskStatus) {
         val extras = parameters("dueComplete" to (to == TaskStatus.DONE).toString())
-        statusLists[to]!!.moveCard(trelloTask.id, extras) // Requires getTasks called before
+        statusLists[to]!!.moveCard(task.id, extras) // Requires getTasks called before
     }
 
-    override fun archiveTask(trelloTask: Task) {
-        trello.archiveCard(trelloTask.id) // Requires getTasks called before
+    override fun archiveTask(task: Task) {
+        trello.archiveCard(task.id) // Requires getTasks called before
     }
 
     override fun getDefaultBoard(): Board = board

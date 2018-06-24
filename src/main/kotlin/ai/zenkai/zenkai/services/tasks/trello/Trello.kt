@@ -2,13 +2,14 @@ package ai.zenkai.zenkai.services.tasks.trello
 
 import ai.zenkai.zenkai.add
 import ai.zenkai.zenkai.services.Parameters
+import ai.zenkai.zenkai.services.RestClient
 import ai.zenkai.zenkai.services.RestTemplateHttpClient
 import ai.zenkai.zenkai.services.parameters
 import ai.zenkai.zenkai.services.tasks.trello.TrelloEndpoint.*
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
-open class Trello(private val applicationKey: String, private val userToken: String) : TrelloService, RestTemplateHttpClient() {
+open class Trello(private val applicationKey: String, private val userToken: String) : TrelloService, RestClient by RestTemplateHttpClient {
 
     private val keyToken by lazy { parameters("key" to applicationKey, "token" to userToken) }
 

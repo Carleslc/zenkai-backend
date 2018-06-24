@@ -1,9 +1,7 @@
 package ai.zenkai.zenkai.services.clock
 
 import ai.zenkai.zenkai.i18n.toLocale
-import ai.zenkai.zenkai.model.logger
 import ai.zenkai.zenkai.remove
-import me.carleslc.kotlin.extensions.strings.remove
 import org.springframework.stereotype.Service
 import java.time.DateTimeException
 import java.time.Duration
@@ -24,7 +22,7 @@ class ClockService {
 
     private val durationFormat by lazy { """(?=.*[dhms])(?:(\d+d\s*)?(\d+h\s*)?(\d+m\s*)?(\d+s\s*)?)""".toRegex() }
 
-    fun now(timezone: ZoneId = DEFAULT_TIME_ZONE): LocalTime = LocalTime.now(timezone)
+    fun now(zoneId: ZoneId = DEFAULT_TIME_ZONE): LocalTime = LocalTime.now(zoneId)
 
     fun parse(time: String): LocalTime = LocalTime.parse(time)
 

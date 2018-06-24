@@ -9,9 +9,9 @@ interface EventService : Service {
 
     fun getEvents(start: LocalDateTime? = null, end: LocalDateTime? = null, maxResults: Int? = null): List<Event>
 
-    fun readFollowingEvents(n: Int, maxDate: LocalDateTime? = null): List<Event>
+    fun getEvents(date: LocalDate): List<Event>
 
-    fun readEvents(date: LocalDate): List<Event>
+    fun getFollowingEvents(n: Int, maxDate: LocalDateTime? = null): List<Event>
 
     fun createEvent(event: Event): Event
 

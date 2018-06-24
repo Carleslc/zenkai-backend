@@ -1,6 +1,7 @@
 package ai.zenkai.zenkai.services.weather
 
 import ai.zenkai.zenkai.config.OPEN_WEATHER_MAP_API_KEY
+import ai.zenkai.zenkai.model.Weather
 import com.google.gson.JsonParser
 import org.springframework.stereotype.Service
 import java.net.URL

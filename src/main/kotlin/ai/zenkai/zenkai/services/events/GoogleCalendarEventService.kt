@@ -66,9 +66,7 @@ class GoogleCalendarEventService(private val service: GoogleCalendarService,
     override fun findEvents(query: String) = findServiceEvents(query).map { it.toEvent(timezone) }
 
     override fun removeEvent(event: Event) {
-        event.id?.let {
-            service.events().delete(defaultCalendarId, it).execute()
-        }
+        service.events().delete(defaultCalendarId, event.id).execute()
     }
 
     override fun removeEvents(ids: Collection<String>) {

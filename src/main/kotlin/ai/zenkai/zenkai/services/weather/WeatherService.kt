@@ -1,6 +1,9 @@
 package ai.zenkai.zenkai.services.weather
 
-interface WeatherService {
+import ai.zenkai.zenkai.model.Weather
+import ai.zenkai.zenkai.services.Service
+
+interface WeatherService : Service {
 
     val url: String
 
