@@ -35,11 +35,11 @@ class GoogleCalendarEventService(private val service: GoogleCalendarService,
         return this
     }
 
-    override fun readFollowingEvents(n: Int, maxDate: LocalDateTime?): List<Event> {
+    override fun getFollowingEvents(n: Int, maxDate: LocalDateTime?): List<Event> {
         return getEvents(maxResults=n, end=maxDate)
     }
 
-    override fun readEvents(date: LocalDate): List<Event> {
+    override fun getEvents(date: LocalDate): List<Event> {
         return getEvents(start=date.atStartOfDay(), end=date.plusDays(1).atStartOfDay())
     }
 

@@ -8,7 +8,7 @@ import ai.zenkai.zenkai.replace
 import org.springframework.stereotype.Controller
 
 @Controller
-class CalculatorController : BaseController {
+class CalculatorController : ActionController {
 
     override val actionMap: Map<String, Handler> = mapOf(
             "calculator.sum" to { b -> b.sum() },

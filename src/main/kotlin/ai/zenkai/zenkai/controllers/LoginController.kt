@@ -4,7 +4,7 @@ import ai.zenkai.zenkai.model.Handler
 import org.springframework.stereotype.Controller
 
 @Controller
-class LoginController : BaseController {
+class LoginController : ActionController {
 
     override val actionMap: Map<String, Handler> = mapOf(
             "greetings" to { b -> b.greetings() },

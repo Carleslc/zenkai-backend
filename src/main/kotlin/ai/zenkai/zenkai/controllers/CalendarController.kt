@@ -14,7 +14,7 @@ import org.springframework.stereotype.Controller
 import java.time.DayOfWeek
 
 @Controller
-class CalendarController(private val calendarService: CalendarService) : BaseController {
+class CalendarController(private val calendarService: CalendarService) : ActionController {
 
     val logger: Logger by LazyLogger()
 
@@ -22,27 +22,6 @@ class CalendarController(private val calendarService: CalendarService) : BaseCon
             "date.get" to { b -> b.calendar() },
             "date.get.period" to { b -> b.calendarPeriod() }
     )
-
-    fun Bot.calendarPeriod() {
-        val today = calendarService.today(timezone)
-        val dayOfWeek = getString("day-of-week")?.let { DayOfWeek.valueOf(it) }
-        val period = getDate("period")?.let { DatePeriod(it, calendarService) }
-        val original = getString("period-original")?.toLowerCase(locale).orEmpty()
-
-        val date = calendarService.inPeriod(dayOfWeek ?: today.dayOfWeek,
-                period ?: DatePeriod.default(calendarService, timezone), today)
-
-        val format = if (dayOfWeek.isNull()) {
-            calendarService.prettyDate(date, language)
-        } else {
-            calendarService.getDayOfMonth(date, language)
-        }
-
-        val originalString = original.clean().capitalize()
-        var be = isOrWas(date)
-        if (originalString.isBlank()) be = be.capitalize()
-        addMessage("$originalString $be $format".trim())
-    }
 
     fun Bot.calendar() {
         val today = calendarService.today(timezone)
@@ -82,6 +61,27 @@ class CalendarController(private val calendarService: CalendarService) : BaseCon
         }
 
         addMessage("${original.clean().capitalize()} ${isOrWas(date)} $format")
+    }
+
+    fun Bot.calendarPeriod() {
+        val today = calendarService.today(timezone)
+        val dayOfWeek = getString("day-of-week")?.let { DayOfWeek.valueOf(it) }
+        val period = getDate("period")?.let { DatePeriod(it, calendarService) }
+        val original = getString("period-original")?.toLowerCase(locale).orEmpty()
+
+        val date = calendarService.inPeriod(dayOfWeek ?: today.dayOfWeek,
+                period ?: DatePeriod.default(calendarService, timezone), today)
+
+        val format = if (dayOfWeek.isNull()) {
+            calendarService.prettyDate(date, language)
+        } else {
+            calendarService.getDayOfMonth(date, language)
+        }
+
+        val originalString = original.clean().capitalize()
+        var be = isOrWas(date)
+        if (originalString.isBlank()) be = be.capitalize()
+        addMessage("$originalString $be $format".trim())
     }
 
 }

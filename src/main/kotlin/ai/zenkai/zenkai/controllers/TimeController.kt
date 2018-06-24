@@ -19,7 +19,7 @@ import java.time.DateTimeException
 import java.time.zone.ZoneRulesException
 
 @RestController
-class TimeController(private val clockService: ClockService): BaseController {
+class TimeController(private val clockService: ClockService): ActionController {
 
     override val actionMap: Map<String, Handler> = mapOf(
             "time.get" to { b -> b.clock() }

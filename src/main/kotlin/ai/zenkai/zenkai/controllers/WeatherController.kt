@@ -7,7 +7,7 @@ import ai.zenkai.zenkai.services.weather.WeatherService
 import org.springframework.stereotype.Controller
 
 @Controller
-class WeatherController(private val weatherService: WeatherService) : BaseController {
+class WeatherController(private val weatherService: WeatherService) : ActionController {
 
     override val actionMap: Map<String, Handler> = mapOf(
             "weather" to { b -> b.weather() }
