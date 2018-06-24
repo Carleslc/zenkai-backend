@@ -48,7 +48,9 @@ class TaskEventController(private val calendarService: CalendarService, private 
                 val task = tasks.find { it.hasSimilarTitle(title, locale) }
                 if (task != null) {
                     val messageId = if (task.status == status) {
-                        S.ALREADY_ADDED
+                        archiveTask(task)
+                        setArgument("moved-from", null)
+                        S.TASK_DELETED
                     } else {
                         moveTask(task, status)
                         setArgument("moved-from", task.status.toString())

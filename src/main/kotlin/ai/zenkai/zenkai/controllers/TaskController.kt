@@ -110,12 +110,13 @@ class TaskController(private val clockService: ClockService) : ActionController 
         } else if (title != null) {
             val status = TaskStatus.parse(getString("task-type", TASK_ADD_CONTEXT))
             val tasks = getAllTasks(null)
-            val words = title.words(locale).toList()
+            val titleWithoutDuration = clockService.removeDuration(title)
+            val words = titleWithoutDuration.words(locale).toList()
             var wordsWithoutFirst = words
             val titleSplit = if (words.size > 1) {
                 wordsWithoutFirst = words.subList(1, words.size)
                 wordsWithoutFirst.joinToString(" ")
-            } else title
+            } else titleWithoutDuration
             val trimmedTitle = wordsWithoutFirst.trimStopWordsLeft(locale)
             val titleMatch = if (trimmedTitle.isNotBlank()) trimmedTitle else titleSplit
             val matchTask = tasks.find { it.hasSimilarTitle(titleMatch, locale) }

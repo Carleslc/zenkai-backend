@@ -53,6 +53,8 @@ object i18n : Set<String> by linkedSetOf(DEFAULT_LANGUAGE, "es") {
 }
 
 enum class S {
+    HELP,
+    HELP_SPEECH,
     PAST,
     PREVIOUS,
     AGO,

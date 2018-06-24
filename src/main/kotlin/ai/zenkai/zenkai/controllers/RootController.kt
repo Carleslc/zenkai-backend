@@ -3,6 +3,8 @@ package ai.zenkai.zenkai.controllers
 import ai.zenkai.zenkai.CachedHttpServletRequest
 import ai.zenkai.zenkai.exceptions.badRequest
 import ai.zenkai.zenkai.exceptions.multicatch
+import ai.zenkai.zenkai.i18n.S
+import ai.zenkai.zenkai.mergeMaps
 import ai.zenkai.zenkai.model.Bot
 import ai.zenkai.zenkai.model.Handler
 import ai.zenkai.zenkai.services.calendar.CalendarService
@@ -26,7 +28,8 @@ class RootController(private val calendarService: CalendarService,
                      calendarController: CalendarController,
                      loginController: LoginController,
                      taskController: TaskController,
-                     eventController: EventController): ActionController {
+                     eventController: EventController,
+                     taskEventController: TaskEventController): ActionController {
 
     @Autowired
     lateinit var gson: Gson
@@ -45,6 +48,15 @@ class RootController(private val calendarService: CalendarService,
         }
     }
 
-    override val actionMap: Map<String, Handler> = actionMapper(calculatorController, weatherController, timeController, calendarController, loginController, taskController, eventController)
+    fun Bot.help() {
+        addMessage(textToSpeech = get(S.HELP_SPEECH), displayText = get(S.HELP))
+    }
+
+    override val actionMap: Map<String, Handler> = mergeMaps(
+            actionMapper(calculatorController, weatherController, timeController, calendarController, loginController, taskController, eventController, taskEventController),
+            mapOf<String, Handler>(
+                    "help" to { b -> b.help() }
+            )
+    )
 
 }
