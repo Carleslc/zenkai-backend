@@ -16,7 +16,7 @@ import org.springframework.stereotype.Controller
 import java.time.ZonedDateTime
 
 @Controller
-class EventController(private val calendarService: CalendarService) : ActionController {
+class EventController(val calendarService: CalendarService) : ActionController {
 
     val logger: Logger by LazyLogger()
 
@@ -69,6 +69,9 @@ class EventController(private val calendarService: CalendarService) : ActionCont
         val now = ZonedDateTime.now(timezone)!!
         logger.info("Now: $now")
         var title = getString("event-title")
+        if (title != null && get(S.SCHEDULE) in title.toLowerCase() && getDate("date") != null) { // not an event but schedule action
+            SchedulerController.schedule(this@putEvent, this@EventController)
+        }
         val location = getString("location")
         logger.info("Title: $title")
         logger.info("Start: $start (Original $startDateOriginal / $startTimeOriginal)")

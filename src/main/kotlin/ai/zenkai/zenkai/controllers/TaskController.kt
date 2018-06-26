@@ -123,7 +123,7 @@ class TaskController(private val clockService: ClockService) : ActionController 
             val alreadyAdded = matchTask?.status == status
             var task: Task
             val messageId: S
-            var duration: Duration? = null
+            var duration: Duration?
             var movedFrom: TaskStatus? = null
             when {
                 alreadyAdded -> {
